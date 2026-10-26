@@ -28,6 +28,9 @@ static int process_input(int fd,int source,int publish_events) {
             if(!event)continue;
             if(publish_events && net>=0) {
                 if(source==0){
+#ifdef WP_KNOB_ACTIVITY
+                    WP_KNOB_ACTIVITY();
+#endif
                     if(e->code==KEY_FN_F3)gesture_pulse_at(0,e->code,ms());
                     else if(e->code==KEY_FN_F8)gesture_hold(0,e->code);
                     else {gesture_flush(0);gesture_publish(0,event,e->code);}

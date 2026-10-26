@@ -6,6 +6,8 @@ public final class KnobURLTests {
         check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/frame/set","Title\n20°\nDetail",false)).equals("knob frame 5469746c650a3230c2b00a44657461696c"));
         check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/led/color/set","White",false)).equals("knob led 5768697465"));
         check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/power/set","ON",true))==null);
+        check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/activity/set","ON",false)).equals("knob activity 4f4e"));
+        check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/activity/set","ON",true))==null);
         check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/unknown/set","ON",false))==null);
         check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/title/set","",false)).equals("knob title -"));
         c.selected.clear();check(KnobTopics.command(c,new MqttSession.Message(c.mqttBase+"/knob/display/title/set","x",false))==null);

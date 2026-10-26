@@ -1,6 +1,10 @@
 # Tuya HA Wall Panel — unified app
 
-Current build **0.16.0**: HA Reload dashboard and Restart app commands, tested
+Current local build **0.17.0**: knob-only wake/white LED on physical use, then
+small display off/red LED after 15 seconds of inactivity. Local policy, optional
+HA Knob activity mode switch. See `KNOB_ACTIVITY.md`. Not published to GitHub.
+
+Previous build **0.16.0**: HA Reload dashboard and Restart app commands, tested
 successfully by the user. See the repository root README for current installation
 and HACS instructions. Historical notes below document development milestones.
 

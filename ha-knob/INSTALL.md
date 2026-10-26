@@ -1,4 +1,10 @@
-# Tuya Wall Panel 1.13.0
+# Tuya Wall Panel 1.14.0
+
+Version 1.14 adds **Knob activity mode**, requiring Android app 0.17.0. By default,
+physical knob use wakes its small display and makes the LED white. Fifteen seconds
+after the last use, its display turns off and the LED returns to red. This runs
+locally without HA/Wi-Fi and takes precedence over manual knob power/follow/LED.
+Disable the mode to restore the old manual behavior. The main display is unchanged.
 
 Version 1.13 adds **Reload dashboard** and **Restart app** under Configuration.
 These require Android app 0.16.0 or newer. Reload refreshes the existing WebView

@@ -359,7 +359,7 @@ class KnobController:
                     self._sent=frame
                 except HomeAssistantError:
                     self._sent=None;return
-            if self.options["auto_led"]:
+            if self.options["auto_led"] and self.hardware.values.get("knob_activity_mode")!="ON":
                 led="Red" if unavailable else "White"
                 if led!=self._led:
                     await mqtt.async_publish(self.hass,self.base+"/knob/led/color/set",led,qos=1,retain=False)

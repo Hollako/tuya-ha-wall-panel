@@ -209,7 +209,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
                 JSONObject payload=new JSONObject();payload.put("event_type",event);payload.put("steps",1);payload.put("key_code",data.getInt("key_code"));
                 JSONObject current=state;if(current!=null&&current.optBoolean("knob_input_ready",false)){publish("/knob/event",payload.toString(),false);publish("/event",payload.toString(),false);}
             }else if(type.equals("knob_state")){
-                String topic=data.getString("topic");if(config.selected.contains("knob_display")&&topic.matches("/knob/(?:display/(?:availability|(?:title|value|detail|power|follow_main|color|actual)/state)|led/color/state)"))publish(topic,data.getString("payload"),true);
+                String topic=data.getString("topic");if(config.selected.contains("knob_display")&&topic.matches("/knob/(?:display/(?:availability|(?:title|value|detail|power|follow_main|activity|color|actual)/state)|led/color/state)"))publish(topic,data.getString("payload"),true);
             }else if(type.equals("management_state")){ManagementRuntime current=management;if(current!=null)current.backend(data);}
             else if(type.equals("display_state")){if(config.selected.contains("display"))publish("/display/state",data.getJSONObject("data").toString(),true);}
             else if(type.equals("audio_level")){if(config.selected.contains("amplifier")){int value=data.getInt("value");if(value>=0&&value<=100)publish("/audio/hardware_level/state",Integer.toString(value),true);}}

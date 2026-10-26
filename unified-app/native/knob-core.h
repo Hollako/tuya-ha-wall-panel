@@ -7,6 +7,13 @@
 static int dry_run,net,gesture_publish_failed;
 static int core_knob_owner=-1,core_knob_input=-1,core_knob_started;
 static long long ms(void){return g10_ms();}
+static void core_knob_activity_at(long long now);
+static int core_knob_activity_power(long long now);
+static int core_knob_activity_led(long long now);
+#define WP_KNOB_EFFECTIVE_POWER() core_knob_activity_power(ms())
+#define WP_KNOB_EFFECTIVE_LED() core_knob_activity_led(ms())
+#define WP_KNOB_POWER_STATE() core_knob_activity_power(ms())
+#define WP_KNOB_ACTIVITY() core_knob_activity_at(ms())
 static void core_json_string(char *out,size_t size,const char *s){
     size_t n=0;for(const unsigned char *p=(const unsigned char*)s;*p&&n+7<size;p++){
         if(*p=='"'||*p=='\\'){out[n++]='\\';out[n++]=(char)*p;}
@@ -32,11 +39,44 @@ static int knob_notice(const char *format,...){
 #undef puts
 #undef printf
 #undef running
+#ifndef WP_KNOB_ACTIVITY_PATH
+#define WP_KNOB_ACTIVITY_PATH STATE"/knob-activity"
+#endif
+/* Only local physical input extends this RAM-only deadline. HA frames, clock
+ * updates and main-display changes must never wake the auxiliary LCD. */
+static int core_knob_activity_enabled=1,core_knob_activity_last=-1,core_knob_led_physical=-1;
+static long long core_knob_activity_until;
+static int core_knob_activity_power(long long now){
+    return core_knob_activity_enabled?core_knob_activity_until>now:knob_power&&(!knob_follow||knob_main_awake());
+}
+static int core_knob_activity_led(long long now){return core_knob_activity_enabled?core_knob_activity_until>now:knob_led;}
+static void core_knob_activity_at(long long now){
+    if(core_config.knob_input&&core_config.knob_display&&core_knob_activity_enabled){
+        core_knob_activity_until=now+15000;knob_check_at=0;
+    }
+}
+static void core_knob_activity_load(void){
+    core_knob_activity_enabled=1;FILE *f=fopen(WP_KNOB_ACTIVITY_PATH,"r");if(!f)return;
+    char b[32]={0};if(fgets(b,sizeof(b),f)&&(!strcmp(b,"0\n")||!strcmp(b,"1\n")))core_knob_activity_enabled=b[0]-'0';fclose(f);
+}
+static int core_knob_activity_save(int enabled){
+    char temp[512];int n=snprintf(temp,sizeof(temp),"%s.new",WP_KNOB_ACTIVITY_PATH);if(n<0||(size_t)n>=sizeof(temp))return -1;
+    FILE *f=fopen(temp,"w");if(!f)return -1;
+    int bad=fprintf(f,"%d\n",enabled)<0||fflush(f)||fsync(fileno(f));if(fclose(f))bad=1;
+    if(bad||chmod(temp,0600)||rename(temp,WP_KNOB_ACTIVITY_PATH))return -1;return 0;
+}
+static void core_knob_activity_tick(long long now){
+    if(!core_config.knob_display||!knob_ready)return;
+    int active=core_knob_activity_power(now),led=core_knob_activity_led(now);
+    if(active!=core_knob_activity_last){if(active)knob_dirty=1;knob_report=1;knob_check_at=0;core_knob_activity_last=active;}
+    if(led!=core_knob_led_physical&&!knob_node("/proc/vendor/led_ctrl",led)){core_knob_led_physical=led;knob_report=1;}
+}
 static int core_knob_input_ready(void){return core_knob_started&&core_knob_input>=0&&rotary_fd>=0;}
 static int core_knob_display_ready(void){return core_knob_started&&knob_ready;}
 static void core_knob_close(void){
     gesture_cancel(0);rotary_cleanup();if(core_knob_input>=0)close(core_knob_input);core_knob_input=-1;
     if(knob_fb>=0)close(knob_fb);knob_fb=-1;knob_ready=0;core_knob_started=0;
+    core_knob_activity_until=0;core_knob_activity_last=-1;core_knob_led_physical=-1;
 }
 static void core_knob_tick(void){
     if(core_knob_owner<0){
@@ -45,7 +85,7 @@ static void core_knob_tick(void){
     if(!core_knob_started){
         core_knob_started=1;
         if(core_config.knob_input){core_knob_input=input_device("knod-aispeech");rotary_init();}
-        if(core_config.knob_display){knob_physical=-1;knob_check_at=0;knob_dirty=knob_report=1;knob_init();}
+        if(core_config.knob_display){core_knob_activity_load();knob_physical=-1;knob_check_at=0;knob_dirty=knob_report=1;knob_init();}
         core_status(0);
     }
     int before=core_knob_input_ready();
@@ -55,7 +95,11 @@ static void core_knob_tick(void){
     }
     if(before!=core_knob_input_ready())core_status(0);
     gestures_tick_at(ms());
-    if(core_config.knob_display){knob_tick();knob_publish();}
+    if(core_config.knob_display){
+        core_knob_activity_tick(ms());knob_tick();
+        if(knob_report&&knob_ready)publish("/knob/display/activity/state",core_knob_activity_enabled?"ON":"OFF",1);
+        knob_publish();
+    }
 }
 static int core_knob_payload(const char *field,const char *payload){
     if(!strcmp(field,"frame")){
@@ -64,12 +108,20 @@ static int core_knob_payload(const char *field,const char *payload){
         return !strchr(c,'\n')&&knob_valid_text(b,32)&&knob_valid_text(a,16)&&knob_valid_text(c,32);
     }
     for(int i=0;i<3;i++)if(!strcmp(field,knob_fields[i]))return knob_valid_text(payload,i==1?16:32);
-    if(!strcmp(field,"power")||!strcmp(field,"follow_main"))return !strcmp(payload,"ON")||!strcmp(payload,"OFF");
+    if(!strcmp(field,"power")||!strcmp(field,"follow_main")||!strcmp(field,"activity"))return !strcmp(payload,"ON")||!strcmp(payload,"OFF");
     if(!strcmp(field,"color")){for(int i=0;i<7;i++)if(!strcmp(payload,knob_colors[i]))return 1;return 0;}
     return !strcmp(field,"led")&&(!strcmp(payload,"Red")||!strcmp(payload,"White"));
 }
 static int core_knob_command(const char *field,const char *payload){
     if(!core_config.knob_display||!knob_ready||!core_knob_payload(field,payload))return -1;
+    if(!strcmp(field,"activity")){
+        int enabled=!strcmp(payload,"ON");
+        if(enabled!=core_knob_activity_enabled){
+            if(core_knob_activity_save(enabled))return -1;
+            core_knob_activity_enabled=enabled;core_knob_activity_until=0;core_knob_activity_last=-1;
+        }
+        knob_check_at=0;knob_report=1;return 0;
+    }
     char topic[96];if(!strcmp(field,"led"))strcpy(topic,"/knob/led/color/set");
     else snprintf(topic,sizeof(topic),"/knob/display/%s/set",field);
     knob_command(topic,payload,0);return 0;

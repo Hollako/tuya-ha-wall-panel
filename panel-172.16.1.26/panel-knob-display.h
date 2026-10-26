@@ -14,6 +14,15 @@ static int knob_fb=-1,knob_ready,knob_dirty=1,knob_report=1,knob_physical=-1;
 static long long knob_check_at;
 static struct fb_var_screeninfo knob_var;
 static uint16_t knob_pixels[240*240];
+#ifndef WP_KNOB_EFFECTIVE_POWER
+#define WP_KNOB_EFFECTIVE_POWER() (knob_power&&(!knob_follow||knob_main_awake()))
+#endif
+#ifndef WP_KNOB_EFFECTIVE_LED
+#define WP_KNOB_EFFECTIVE_LED() knob_led
+#endif
+#ifndef WP_KNOB_POWER_STATE
+#define WP_KNOB_POWER_STATE() knob_power
+#endif
 static unsigned int knob_utf8(const unsigned char **at) {
     const unsigned char *p=*at;unsigned int c=*p++,n=0,min=0;
     if(c<128){*at=p;return c;}
@@ -64,9 +73,13 @@ static void knob_line(const char *s,int baseline,int size,int maximum,unsigned i
     }
 }
 static int knob_node(const char *path,int value) {
+#ifdef WP_KNOB_NODE
+    return WP_KNOB_NODE(path,value);
+#else
     int fd=open(path,O_WRONLY|O_CLOEXEC);if(fd<0)return -1;
     const char *s=value?"on\n":"off\n";size_t len=strlen(s);
     int ok=write(fd,s,len)==(ssize_t)len?0:-1;close(fd);return ok;
+#endif
 }
 static int knob_main_awake(void) {
     FILE *f=fopen("/sys/class/backlight/backlight/brightness","r");if(!f)return 0;
@@ -108,13 +121,13 @@ static void knob_init(void) {
     if(knob_fb<0||ioctl(knob_fb,FBIOGET_VSCREENINFO,&knob_var)||ioctl(knob_fb,FBIOGET_FSCREENINFO,&fix)||strncmp(fix.id,"fb_gc9a01",9)||knob_var.xres!=240||knob_var.yres!=240||knob_var.bits_per_pixel!=16||fix.line_length!=480||fix.smem_len<sizeof(knob_pixels)||knob_var.red.length!=5||knob_var.green.length!=6||knob_var.blue.length!=5){
         if(knob_fb>=0)close(knob_fb);knob_fb=-1;puts("Knob display unavailable: unexpected framebuffer layout.");return;
     }
-    if(knob_render()||knob_node("/proc/vendor/led_ctrl",knob_led)){close(knob_fb);knob_fb=-1;return;}
+    if(knob_render()||knob_node("/proc/vendor/led_ctrl",WP_KNOB_EFFECTIVE_LED())){close(knob_fb);knob_fb=-1;return;}
     knob_ready=1;puts("Auxiliary knob display ready: 240x240 RGB565, mirrored mounting corrected.");
 }
 static void knob_tick(void) {
     if(!knob_ready||ms()<knob_check_at)return;knob_check_at=ms()+200;
     if(knob_dirty&&knob_render()){puts("Knob screen write failed.");return;}
-    int value=knob_power&&(!knob_follow||knob_main_awake());
+    int value=WP_KNOB_EFFECTIVE_POWER();
     if(value!=knob_physical&&!knob_node("/proc/vendor/lcd_ctrl",value)){knob_physical=value;knob_report=1;}
 }
 static int knob_publish(void) {
@@ -126,7 +139,7 @@ static int knob_publish(void) {
     if(publish(BASE"/knob/display/availability",knob_ready?"online":"offline",1))return -1;
     if(!knob_ready){knob_report=0;return 0;}
     for(int i=0;i<3;i++){char t[160];snprintf(t,sizeof(t),BASE"/knob/display/%s/state",knob_fields[i]);if(publish(t,knob_text[i],1))return -1;}
-    if(publish(BASE"/knob/display/power/state",knob_power?"ON":"OFF",1)||publish(BASE"/knob/display/follow_main/state",knob_follow?"ON":"OFF",1)||publish(BASE"/knob/display/color/state",knob_colors[knob_color],1)||publish(BASE"/knob/led/color/state",knob_led?"White":"Red",1)||publish(BASE"/knob/display/actual/state",knob_physical==1?"ON":"OFF",1))return -1;
+    if(publish(BASE"/knob/display/power/state",WP_KNOB_POWER_STATE()?"ON":"OFF",1)||publish(BASE"/knob/display/follow_main/state",knob_follow?"ON":"OFF",1)||publish(BASE"/knob/display/color/state",knob_colors[knob_color],1)||publish(BASE"/knob/led/color/state",WP_KNOB_EFFECTIVE_LED()?"White":"Red",1)||publish(BASE"/knob/display/actual/state",knob_physical==1?"ON":"OFF",1))return -1;
     knob_report=0;return 0;
 }
 static void knob_command(const char *topic,const char *payload,int retained) {
@@ -156,7 +169,8 @@ static void knob_command(const char *topic,const char *payload,int retained) {
     if(!strcmp(topic,BASE"/knob/display/color/set"))for(int i=0;i<7;i++)if(!strcmp(payload,knob_colors[i])){knob_color=i;knob_dirty=1;matched=1;}
     if(!strcmp(topic,BASE"/knob/led/color/set")){
         if(strcmp(payload,"White")&&strcmp(payload,"Red"))return;
-        int v=!strcmp(payload,"White");if(knob_node("/proc/vendor/led_ctrl",v))return;knob_led=v;matched=1;
+        int v=!strcmp(payload,"White"),old=knob_led;knob_led=v;
+        if(knob_node("/proc/vendor/led_ctrl",WP_KNOB_EFFECTIVE_LED())){knob_led=old;return;}matched=1;
     }
     if(matched){if(knob_save())puts("Could not persist knob display settings.");knob_check_at=0;knob_report=1;knob_tick();}
 }

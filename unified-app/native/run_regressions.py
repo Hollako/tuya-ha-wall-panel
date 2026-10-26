@@ -8,6 +8,7 @@ tests+=['unified-app/native/test-audio-core.c','wallpanel-hardware/test-audio-le
 tests+=['panel-172.16.1.26/test-display.c']
 tests+=['unified-app/native/test-management-core.c','unified-app/native/test-capture.c','wallpanel-hardware/test-management-lease.c']
 tests+=['unified-app/native/test-health.c']
+tests+=['unified-app/native/test-knob-activity.c']
 for i,t in enumerate(tests):
     out='/tmp/wallpanel-05-test-'+str(i)
     subprocess.run(['wsl','-d','Ubuntu','--','gcc','-std=gnu11','-O1','-Wall','-Wextra','-Wno-unused-function','-Wno-misleading-indentation',base+'/'+t,'-o',out],check=True)

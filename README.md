@@ -5,7 +5,8 @@
 A modular Android wall-panel app and a local Home Assistant integration for
 dashboard, knob, buttons, relays, display, audio and SIP video intercom control.
 
-**Current versions:** Android app **0.16.0**; HA integration **1.13.1**.
+**Current local versions:** Android app **0.17.0**; HA integration **1.14.0**.
+These updates are local; the published release remains app 0.16.0 / HA 1.13.1.
 Tested hardware: **Sznaner G10 Music Host / Rockchip PX30, Android 8, 2 GB RAM**.
 Other Tuya models require hardware discovery and a matching adapter; installing
 the app alone does not make an untested model compatible with the G10 wiring.
@@ -34,6 +35,7 @@ require Home Assistant 2026.3 or newer. No cloud service is required by this pro
 - Four independent button event streams and configurable single/double actions.
 - Two relays, with optional local button assignments that work offline.
 - Main display brightness, dim/off timers, instant wake and knob display controls.
+- Local knob-only activity wake/white LED, with red LED and small LCD off after 15 seconds idle.
 - Audio media player, volume/mute, source selection and amplifier routing.
 - Dashboard URL, Open setup, Reload dashboard, Restart app, reboot and screenshots.
 - Optional SIP intercom with two-way audio, ringtone and an uncropped RTSP preview.

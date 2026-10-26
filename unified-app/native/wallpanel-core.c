@@ -99,6 +99,7 @@ static int core_relay(int channel,int value,long long now){
 }
 static void gesture_publish(int control,const char *event,unsigned int code){
     if(core_alive&&control==0&&core_config.knob_input){
+        core_knob_activity_at(g10_ms());
         struct timespec t={0};clock_gettime(CLOCK_BOOTTIME,&t);char line[256];
         snprintf(line,sizeof(line),"{\"v\":1,\"type\":\"knob\",\"event\":\"%s\",\"key_code\":%u,\"steps\":1,\"at_ms\":%lld}\n",event,code,(long long)t.tv_sec*1000+t.tv_nsec/1000000);WP_OUTPUT(line);return;
     }

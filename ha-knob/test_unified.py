@@ -47,7 +47,7 @@ class HardwareTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call.args[2],'');self.assertTrue(call.kwargs['retain'])
     async def test_subscribing_only_listens_and_sends_no_commands(self):
         await self.c.hardware.start()
-        self.assertEqual(t.mqtt.async_subscribe.await_count,20)
+        self.assertEqual(t.mqtt.async_subscribe.await_count,21)
         t.mqtt.async_publish.assert_not_awaited()
     async def test_state_validation_and_availability_are_independent(self):
         self.report('/relay/1/state','ON');self.assertEqual(self.c.hardware.values['relay_1'],'ON')
@@ -78,6 +78,22 @@ class HardwareTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(t.controller.HomeAssistantError):await entity.async_select_option(option)
         await entity.async_select_option('White')
         self.assertEqual(t.mqtt.async_publish.await_args.args[1:],('wallpanel/test_panel/knob/led/color/set','White'))
+    async def test_knob_activity_mode_uses_its_own_nonretained_topic(self):
+        spec=next(s for s in hardware.SPECS if s.key=='knob_activity_mode')
+        entity=switch.PanelSwitch(self.c,spec)
+        self.report('/knob/display/activity/state','ON');self.assertTrue(entity.is_on)
+        await entity.async_turn_off()
+        call=t.mqtt.async_publish.await_args
+        self.assertEqual(call.args[1:],('wallpanel/test_panel/knob/display/activity/set','OFF'))
+        self.assertFalse(call.kwargs['retain'])
+    async def test_background_render_does_not_override_local_activity_led(self):
+        self.c.options['auto_led']=True
+        self.c.hardware.values['knob_activity_mode']='ON'
+        await self.c.render()
+        self.assertFalse(any(call.args[1].endswith('/knob/led/color/set') for call in t.mqtt.async_publish.await_args_list))
+        self.c.hardware.values['knob_activity_mode']='OFF'
+        await self.c.render()
+        self.assertTrue(any(call.args[1].endswith('/knob/led/color/set') for call in t.mqtt.async_publish.await_args_list))
     async def test_amplifier_rejects_nonfinite_or_fractional_values(self):
         spec=next(s for s in hardware.SPECS if s.domain=='number');entity=number.HardwareLevel(self.c,spec)
         for value in (True,-1,101,20.2,float('nan'),float('inf')):

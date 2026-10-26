@@ -57,6 +57,7 @@ asterisk-audit/private-backups/
 !/unified-app/build_native.py
 !/unified-app/build_setup_package.py
 !/unified-app/media_dependencies.py
+!/unified-app/sync_root_worker.py
 /unified-app/assets/hardware/
 /unified-app/assets/provision/manifest.json
 /unified-app/media3-deps/*

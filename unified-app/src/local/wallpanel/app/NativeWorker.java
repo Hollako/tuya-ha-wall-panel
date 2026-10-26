@@ -57,7 +57,7 @@ final class NativeWorker implements Closeable {
         }},"wallpanel-native-reader").start();
     }
     boolean send(String operation){
-        if(closing||socket==null||operation.length()>1100||!operation.matches("(?:status|management (?:reboot|status) 0|display (?:enabled|status|brightness|power|dim_after|off_after|dim_brightness) (?:0|[1-9][0-9]{0,4})|knob_status|audio_status|audiomodules [01] [01]|audio (?:power [01]|speakers [01]|level (?:0|[1-9][0-9]?|100))|knobmodules [01] [01]|knob (?:frame|title|value|detail|power|follow_main|color|led) (?:[0-9a-f]+|-)|relay [12] [01]|bind [1-4] [0-2] [0-2]|modules [01] [01])"))return false;
+        if(closing||socket==null||operation.length()>1100||!operation.matches("(?:status|management (?:reboot|status) 0|display (?:enabled|status|brightness|power|dim_after|off_after|dim_brightness) (?:0|[1-9][0-9]{0,4})|knob_status|audio_status|audiomodules [01] [01]|audio (?:power [01]|speakers [01]|level (?:0|[1-9][0-9]?|100))|knobmodules [01] [01]|knob (?:frame|title|value|detail|power|follow_main|activity|color|led) (?:[0-9a-f]+|-)|relay [12] [01]|bind [1-4] [0-2] [0-2]|modules [01] [01])"))return false;
         return requests.offer(new Request(operation));
     }
     private void writeCommands(){

@@ -27,13 +27,14 @@ SPECS = (
     *(HardwareSpec("text", f"knob_display_{field}", f"Knob display {field}", f"/knob/display/{field}", maximum=maximum, icon="mdi:format-text") for field,maximum in (("title",32),("value",16),("detail",32))),
     HardwareSpec("switch","knob_display_power","Knob display","/knob/display/power"),
     HardwareSpec("switch","knob_display_follow_main","Knob display follow main screen","/knob/display/follow_main"),
+    HardwareSpec("switch","knob_activity_mode","Knob activity mode","/knob/display/activity",icon="mdi:timer-outline"),
     HardwareSpec("select","knob_display_color","Knob display accent color","/knob/display/color",options=("Cyan","White","Red","Green","Blue","Amber","Purple"),icon="mdi:palette"),
     HardwareSpec("select","knob_led_color","Knob LED color","/knob/led/color",options=("Red","White"),icon="mdi:led-on"),
     HardwareSpec("number","audio_hardware_level","Audio hardware output level","/audio/hardware_level","amplifier",maximum=100,icon="mdi:amplifier"),
 )
 EVENTS = {"knob": ("rotate_left","rotate_right","press","double_press","long_press"),
           **{f"button_{i}": ("press","double_press") for i in range(1,5)}}
-LEGACY_ENTITIES = tuple((s.domain,s.key) for s in SPECS) + (("switch","audio_external_speakers"),) + tuple(("event",k) for k in EVENTS)
+LEGACY_ENTITIES = tuple((s.domain,s.key) for s in SPECS if s.key!="knob_activity_mode") + (("switch","audio_external_speakers"),) + tuple(("event",k) for k in EVENTS)
 
 def event_path(key):
     return "/knob/event" if key=="knob" else f"/button/{key[-1]}/event"
