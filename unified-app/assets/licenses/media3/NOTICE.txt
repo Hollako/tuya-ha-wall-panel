@@ -1,0 +1,1 @@
+AndroidX Media3 1.4.1 and AndroidX support components, Copyright The Android Open Source Project. Guava and failureaccess, Copyright Google LLC. Kotlin and JetBrains annotations, Copyright JetBrains. Distributed under Apache License 2.0. Artifacts are pinned in DEPENDENCIES.json. See official project source and Maven metadata for individual notices.

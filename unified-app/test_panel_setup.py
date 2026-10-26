@@ -1,0 +1,27 @@
+"""Production PanelSetup against isolated Android/socket facades; never touches ADB."""
+import subprocess,tempfile
+from pathlib import Path
+r=Path(__file__).resolve().parent
+sources={
+'android/content/Context.java':'''package android.content; public class Context { public static boolean enabled; public static int stops,changes,starts; public java.io.File getFilesDir(){return new java.io.File("unused-test-path");} public android.content.res.AssetManager getAssets(){return null;} public boolean stopService(Intent i){stops++;return true;} }''',
+'android/content/Intent.java':'''package android.content; public class Intent {public Intent(Context c,Class<?> cl){}}''',
+'android/content/res/AssetManager.java':'''package android.content.res; public class AssetManager {public java.io.InputStream open(String p)throws java.io.IOException{throw new AssertionError("Unexpected asset staging");}}''',
+'android/net/LocalSocket.java':'''package android.net; public class LocalSocket {private String reply;public LocalSocket(String s){reply=s;}public void setSoTimeout(int n){} public java.io.InputStream getInputStream(){return new java.io.ByteArrayInputStream(reply.getBytes());}public void close(){}}''',
+'org/json/JSONObject.java':r'''package org.json; import java.util.*;import java.util.regex.*;public class JSONObject {private Map<String,Object> m=new HashMap<String,Object>();public JSONObject(){}public JSONObject(String s){Matcher p=Pattern.compile("\"([^\"]+)\"\\s*:\\s*(true|false|[0-9]+|\"[^\"]*\")".replace("\\\\s","\\s")).matcher(s);while(p.find()){String v=p.group(2);m.put(p.group(1),v.equals("true")?Boolean.TRUE:v.equals("false")?Boolean.FALSE:v.startsWith("\"")?v.substring(1,v.length()-1):Integer.valueOf(v));}}public JSONObject put(String k,Object v){m.put(k,v);return this;}public boolean optBoolean(String k,boolean d){return m.containsKey(k)?Boolean.TRUE.equals(m.get(k)):d;}public int optInt(String k,int d){return m.get(k) instanceof Number?((Number)m.get(k)).intValue():d;}public String optString(String k){return m.containsKey(k)?m.get(k).toString():"";}public JSONObject getJSONObject(String k){throw new AssertionError();}public String getString(String k){return optString(k);}}''',
+'local/wallpanel/app/ConfigStore.java':'''package local.wallpanel.app;import android.content.Context;class ConfigStore {ConfigStore(Context c){}boolean runtimeEnabled(){return Context.enabled;}void setRuntimeEnabled(boolean v){Context.enabled=v;Context.changes++;}}''',
+'local/wallpanel/app/BridgeService.java':'''package local.wallpanel.app;import android.content.Context;class BridgeService {static void ensureStarted(Context c){Context.starts++;}}''',
+'local/wallpanel/app/PrivilegeChannel.java':'''package local.wallpanel.app;class PrivilegeChannel {static String status,mutation;static int checks,mutations;static android.net.LocalSocket open(String s){if(s.trim().equals("SETUP CHECK")){checks++;return new android.net.LocalSocket(status);}mutations++;return new android.net.LocalSocket(mutation);}}''',
+'local/wallpanel/app/SetupTests.java':'''package local.wallpanel.app;import android.content.Context;import org.json.JSONObject;public class SetupTests {
+static void reset(boolean supported,boolean policy,boolean backup){Context.enabled=true;Context.stops=Context.changes=Context.starts=0;PrivilegeChannel.checks=PrivilegeChannel.mutations=0;PrivilegeChannel.status="{\\\"setup_protocol\\\":2,\\\"supported\\\":"+supported+",\\\"policy_ready\\\":"+policy+",\\\"backup_available\\\":"+backup+"}";PrivilegeChannel.mutation="{\\\"ok\\\":true}";}
+static void expect(boolean condition){if(!condition)throw new AssertionError();}
+static void untouched(){expect(Context.enabled&&Context.stops==0&&Context.changes==0&&PrivilegeChannel.mutations==0&&PrivilegeChannel.checks==1);}
+public static void main(String[] args)throws Exception{Context c=new Context();reset(true,true,false);JSONObject x=PanelSetup.change(c,true);expect(x.optString("error").equals("no_previous_setup"));untouched();reset(false,true,true);expect(PanelSetup.change(c,false).optString("error").equals("unsupported_hardware"));untouched();reset(true,false,true);expect(PanelSetup.change(c,false).optString("error").equals("selinux_policy_setup_required"));untouched();reset(true,true,true);expect(PanelSetup.change(c,true).optBoolean("ok",false));expect(!Context.enabled&&Context.stops==1&&Context.starts==0&&PrivilegeChannel.mutations==1);reset(true,true,true);expect(PanelSetup.change(c,false).optBoolean("ok",false));expect(Context.enabled&&Context.stops==1&&Context.starts==1&&PrivilegeChannel.mutations==1);System.out.println("PASS: production setup early refusals do not stop hardware; successful repair resumes and real restore leaves hardware stopped. Isolated facades only.");}}
+'''
+}
+with tempfile.TemporaryDirectory(dir=r/'test-classes',prefix='setup-') as folder:
+    temp=Path(folder);files=[]
+    for name,body in sources.items():
+        path=temp/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body);files.append(path)
+    java=r'C:\Program Files (x86)\Java\jre1.8.0_431\bin\java.exe';out=temp/'classes';out.mkdir()
+    subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),str(r/'src/local/wallpanel/app/PanelSetup.java'),*[str(p) for p in files]],check=True)
+    subprocess.run([java,'-cp',str(out),'local.wallpanel.app.SetupTests'],check=True,timeout=15)

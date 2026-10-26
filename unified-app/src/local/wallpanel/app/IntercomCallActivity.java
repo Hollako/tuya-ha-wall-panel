@@ -1,0 +1,28 @@
+package local.wallpanel.app;
+import android.app.Activity;
+import android.graphics.drawable.GradientDrawable;
+import android.os.*;
+import android.view.*;
+import android.widget.*;
+/** Full-window, uncropped preview with call controls layered above it. */
+public final class IntercomCallActivity extends Activity {
+    private final Handler main=new Handler();private TextView caller,status;private Button answer,end,mute,doorOne,doorTwo;private SystemUiGuard ui;private IntercomVideo video;private SipStore store;
+    private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
+    private GradientDrawable background(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(32));return d;}
+    private void icon(Button button,int type){button.setCompoundDrawables(null,new CallActionIcon(type,dp(28)),null,null);}
+    private Button action(LinearLayout row,String label,int color,int type){Button b=new Button(this);b.setAllCaps(false);b.setText(label);b.setTextSize(14);b.setTextColor(-1);b.setBackground(background(color));b.setMinWidth(0);b.setMinimumWidth(0);b.setMinHeight(0);b.setMinimumHeight(0);b.setIncludeFontPadding(false);b.setSingleLine(true);b.setPadding(dp(8),dp(8),dp(8),dp(8));b.setCompoundDrawablePadding(dp(3));icon(b,type);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(dp(112),dp(72));params.setMargins(dp(4),0,dp(4),0);row.addView(b,params);return b;}
+    @Override public void onCreate(Bundle b){super.onCreate(b);store=new SipStore(this);getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN|WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON|WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED|WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        FrameLayout page=new FrameLayout(this);page.setBackgroundColor(0xff000000);video=new IntercomVideo(this);video.setVisibility(View.GONE);page.addView(video,new FrameLayout.LayoutParams(-1,-1));
+        LinearLayout header=new LinearLayout(this);header.setOrientation(LinearLayout.VERTICAL);header.setPadding(dp(24),dp(16),dp(24),dp(24));header.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0xc0000000,0x00000000}));caller=new TextView(this);caller.setTextSize(27);caller.setTextColor(-1);header.addView(caller);status=new TextView(this);status.setTextSize(17);status.setTextColor(0xffe3ebf4);header.addView(status);page.addView(header,new FrameLayout.LayoutParams(-1,-2,Gravity.TOP));
+        LinearLayout controls=new LinearLayout(this);controls.setOrientation(LinearLayout.HORIZONTAL);controls.setGravity(Gravity.CENTER);controls.setPadding(dp(12),dp(16),dp(12),dp(14));controls.setBackground(new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,new int[]{0x00000000,0xc0000000}));
+        answer=action(controls,"Answer",0xff18864b,CallActionIcon.ANSWER);mute=action(controls,"Mute mic",0xe0304659,CallActionIcon.MIC);end=action(controls,"Hang up",0xffcb3541,CallActionIcon.HANGUP);doorOne=action(controls,"Door 1",0xe0255276,CallActionIcon.DOOR);doorTwo=action(controls,"Door 2",0xe0255276,CallActionIcon.DOOR);page.addView(controls,new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM));setContentView(page);
+        answer.setOnClickListener(new View.OnClickListener(){public void onClick(View v){answer.setEnabled(false);SipRuntime.answer();}});end.setOnClickListener(new View.OnClickListener(){public void onClick(View v){end.setEnabled(false);SipRuntime.hangup();}});
+        mute.setOnClickListener(new View.OnClickListener(){public void onClick(View v){SipService s=SipRuntime.current;if(s!=null)s.toggleMicrophone();updateMute(s);}});
+        doorOne.setOnClickListener(new View.OnClickListener(){public void onClick(View v){SipService s=SipRuntime.current;if(s!=null)s.openDoor(1);}});doorTwo.setOnClickListener(new View.OnClickListener(){public void onClick(View v){SipService s=SipRuntime.current;if(s!=null)s.openDoor(2);}});
+    }
+    private void updateMute(SipService s){boolean muted=s!=null&&s.microphoneMuted;icon(mute,muted?CallActionIcon.MIC_OFF:CallActionIcon.MIC);mute.setText(muted?"Unmute mic":"Mute mic");mute.setBackground(background(muted?0xffa56313:0xe0304659));}
+    @Override protected void onResume(){super.onResume();ui=SystemUiGuard.takeAdministratorLease();if(ui==null){ui=new SystemUiGuard(this);ui.start();}getWindow().getDecorView().setSystemUiVisibility(5894);main.post(refresh);}
+    private final Runnable refresh=new Runnable(){public void run(){SipService s=SipRuntime.current;SipEngine.State state=SipRuntime.state();if(s==null||state==SipEngine.State.IDLE||state==SipEngine.State.ENDING){video.stop();finish();return;}try{SipConfig config=store.load();video.show(config);doorOne.setVisibility(config.doorEnabled(1)?View.VISIBLE:View.GONE);doorTwo.setVisibility(config.doorEnabled(2)?View.VISIBLE:View.GONE);}catch(Exception ignored){video.stop();doorOne.setVisibility(View.GONE);doorTwo.setVisibility(View.GONE);}caller.setText(s.caller);status.setText(s.doorStatus.length()>0?s.doorStatus:state==SipEngine.State.RINGING?"Incoming call":"Call active");answer.setVisibility(state==SipEngine.State.RINGING?View.VISIBLE:View.GONE);mute.setVisibility(state==SipEngine.State.IN_CALL?View.VISIBLE:View.GONE);updateMute(s);end.setText(state==SipEngine.State.RINGING?"Decline":"Hang up");answer.setEnabled(true);end.setEnabled(true);doorOne.setEnabled(!s.doorBusy);doorTwo.setEnabled(!s.doorBusy);main.postDelayed(this,300);}};
+    @Override protected void onPause(){main.removeCallbacksAndMessages(null);if(video!=null)video.stop();if(ui!=null){SystemUiGuard.holdForAdministrator(ui);ui=null;}super.onPause();}
+    @Override public void onBackPressed(){}
+}

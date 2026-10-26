@@ -1,0 +1,14 @@
+repositories { google(); mavenCentral() }
+configurations { video }
+configurations.video.attributes {
+    attribute(org.gradle.api.attributes.Attribute.of('org.gradle.jvm.environment', String), 'android')
+    attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE, objects.named(org.gradle.api.attributes.Usage, 'java-runtime'))
+}
+dependencies {
+    video 'androidx.media3:media3-exoplayer:1.4.1'
+    video 'androidx.media3:media3-exoplayer-rtsp:1.4.1'
+}
+tasks.register('copyVideo', Copy) {
+    from configurations.video
+    into '../vendor/media3/artifacts'
+}

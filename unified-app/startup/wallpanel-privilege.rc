@@ -1,0 +1,10 @@
+# App-only privilege bootstrap; enter its context via a system-partition executable.
+service wallpanel_privilege /system/bin/sh /data/local/wallpanel/start-privilege.sh
+    class late_start
+    user root
+    group root input system inet
+    seclabel u:r:su:s0
+    disabled
+
+on property:sys.boot_completed=1
+    start wallpanel_privilege
