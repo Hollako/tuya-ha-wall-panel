@@ -9,11 +9,11 @@ final class ConfigStore {
     private final Context context;
     ConfigStore(Context c){context=c;prefs=c.getSharedPreferences("wall_panel",Context.MODE_PRIVATE);}
     PanelConfig dashboardSettings(){
-        PanelConfig c=new PanelConfig();c.revision=prefs.getLong("revision",0);c.dashboard=prefs.getString("dashboard","");c.lock=prefs.getBoolean("lock",false);
+        PanelConfig c=new PanelConfig();c.revision=prefs.getLong("revision",0);c.dashboard=prefs.getString("dashboard","");c.displayMode=prefs.getString("display_mode","web");c.appPackage=prefs.getString("app_package","");c.lock=prefs.getBoolean("lock",false);
         c.selected=new HashSet<String>(prefs.getStringSet("modules",new HashSet<String>()));return c;
     }
     PanelConfig load()throws Exception {
-        PanelConfig c=new PanelConfig();c.deviceId=deviceId();c.revision=prefs.getLong("revision",0);c.dashboard=prefs.getString("dashboard","");c.haUrl=prefs.getString("ha_url","");
+        PanelConfig c=new PanelConfig();c.deviceId=deviceId();c.revision=prefs.getLong("revision",0);c.dashboard=prefs.getString("dashboard","");c.displayMode=prefs.getString("display_mode","web");c.appPackage=prefs.getString("app_package","");c.haUrl=prefs.getString("ha_url","");
         c.broker=prefs.getString("broker","");c.port=prefs.getInt("port",1883);c.tls=prefs.getBoolean("tls",false);c.mqttBase=mqttBase(c.deviceId);
         c.username=prefs.getString("username","");c.password=Secrets.decrypt(prefs.getString("password",""));
         c.profile=prefs.getString("profile","generic");c.lock=prefs.getBoolean("lock",false);
@@ -88,6 +88,7 @@ final class ConfigStore {
         String encrypted=Secrets.encrypt(c.password);
         if(!prefs.edit().putString("dashboard",c.dashboard).putString("ha_url",c.haUrl).putString("broker",c.broker)
             .putInt("port",c.port).putBoolean("tls",c.tls).putString("username",c.username).putString("password",encrypted).putString("mqtt_base",c.mqttBase)
+            .putString("display_mode",c.displayMode).putString("app_package",c.appPackage)
             .putString("profile",c.profile).putStringSet("modules",new HashSet<String>(c.selected))
             .putBoolean("lock",c.lock).putString("pin",pin)
             .putLong("revision",prefs.getLong("revision",0)+1).putLong("saved_at",System.currentTimeMillis())

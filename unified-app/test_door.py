@@ -1,6 +1,7 @@
 """Production door client against a local fake station only; no physical relays."""
 import http.server,threading,subprocess,tempfile,re,hashlib
 from pathlib import Path
+from engine_sources import sip_source
 r=Path(__file__).resolve().parent
 class Station(http.server.BaseHTTPRequestHandler):
  mode='success';requests=0;accepted=0
@@ -21,7 +22,7 @@ body='''package local.wallpanel.app;public class DoorTests {public static void m
 try:
  with tempfile.TemporaryDirectory(dir=r/'test-classes',prefix='door-') as tmp:
   out=Path(tmp);f=out/'DoorTests.java';f.write_text(body);src=r/'src/local/wallpanel/app'
-  subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-1.7','-nowarn','-d',str(out),*[str(src/n) for n in ['SipConfig.java','SipDigest.java','IntercomDoor.java','HikvisionDoor.java']],str(f)],check=True)
+  subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-1.7','-nowarn','-d',str(out),*[str(sip_source(n)) for n in ['SipConfig.java','SipDigest.java','IntercomDoor.java','HikvisionDoor.java']],str(f)],check=True)
   for mode,requests,accepted in [('success',2,1),('disabled',0,0),('generic',0,0),('cancel',1,0),('redirect',2,1),('rejected',2,1)]:
    Station.mode=mode;Station.requests=Station.accepted=0
    subprocess.run([java,'-cp',str(out),'local.wallpanel.app.DoorTests','http://127.0.0.1:'+str(server.server_port),mode],check=True,timeout=10)

@@ -34,26 +34,38 @@ public class DashboardActivity extends Activity {
     private NetworkRouter router;
     private final NetworkRouter.Listener networkChanges=new NetworkRouter.Listener(){public void changed(){if(!closed&&web!=null){String next=router.key(false);if(!next.equals(networkKey)){networkKey=next;loaded=false;web.stopLoading();loadWhenConnected();}}}};
     private SystemUiGuard systemUi;
-    private boolean loaded=false,closed=false,locked=false,setupShown=false;
+    private DashboardFullscreen fullscreen;
+    private boolean loaded=false,closed=false,locked=false,setupShown=false,appView=false;
     private final Runnable retry=new Runnable(){public void run(){loadWhenConnected();}};
     private final SharedPreferences.OnSharedPreferenceChangeListener changes=new SharedPreferences.OnSharedPreferenceChangeListener(){
-        public void onSharedPreferenceChanged(SharedPreferences prefs,String key){if("dashboard".equals(key))handler.post(new Runnable(){public void run(){if(!closed)refreshDashboard();}});}
+        public void onSharedPreferenceChanged(SharedPreferences prefs,String key){if("dashboard".equals(key)||"display_mode".equals(key)||"app_package".equals(key)||"modules".equals(key))handler.post(new Runnable(){public void run(){if(!closed)refreshDashboard();}});}
     };
     @Override protected void onStart(){super.onStart();router=NetworkRouter.get(this);router.add(networkChanges);networkChanges.changed();getSharedPreferences("wall_panel",MODE_PRIVATE).registerOnSharedPreferenceChangeListener(changes);}
     @Override protected void onStop(){getSharedPreferences("wall_panel",MODE_PRIVATE).unregisterOnSharedPreferenceChangeListener(changes);if(router!=null)router.remove(networkChanges);super.onStop();}
     protected boolean isHome(){return false;}
-    @Override public void onCreate(Bundle saved){super.onCreate(saved);current=new java.lang.ref.WeakReference<DashboardActivity>(this);WebView.setWebContentsDebuggingEnabled(false);router=NetworkRouter.get(this);refreshDashboard();}
-    @Override protected void onResume(){super.onResume();if(!closed){refreshDashboard();if(web!=null&&systemUi==null){systemUi=SystemUiGuard.takeAdministratorLease();if(systemUi==null){systemUi=new SystemUiGuard(this);systemUi.start();}}}}
-    @Override protected void onPause(){if((locked||IntercomSession.active)&&systemUi!=null){SystemUiGuard.holdForAdministrator(systemUi);systemUi=null;}else releaseSystemUi();super.onPause();}
+    @Override public void onCreate(Bundle saved){super.onCreate(saved);fullscreen=new DashboardFullscreen(getWindow());current=new java.lang.ref.WeakReference<DashboardActivity>(this);router=NetworkRouter.get(this);refreshDashboard();}
+    @Override protected void onResume(){super.onResume();if(fullscreen!=null)fullscreen.resume();if(!closed){refreshDashboard();if(web!=null&&systemUi==null){systemUi=SystemUiGuard.takeAdministratorLease();if(systemUi==null){systemUi=new SystemUiGuard(this);systemUi.start();}}}}
+    @Override protected void onPause(){if(fullscreen!=null)fullscreen.pause();if((locked||IntercomSession.active)&&systemUi!=null){SystemUiGuard.holdForAdministrator(systemUi);systemUi=null;}else releaseSystemUi();super.onPause();}
     private void releaseSystemUi(){SystemUiGuard guard=systemUi;systemUi=null;if(guard!=null)guard.close();}
     protected final void refreshDashboard(){
         if(closed)return;
         PanelConfig c=new ConfigStore(this).dashboardSettings();locked=c.lock;
+        if("app".equals(c.displayMode)&&c.selected.contains("dashboard")){
+            releaseSystemUi();releaseWeb();SystemUiGuard.administratorAuthenticated();
+            if(!appView){appView=true;setupShown=false;LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(32,32,32,32);
+                TextView note=new TextView(this);note.setText("Opening selected app. App mode needs prepared root support and the administrator hotspot permission.");note.setTextSize(20);layout.addView(note);
+                Button setup=new Button(this);setup.setText("Open setup");setup.setOnClickListener(new View.OnClickListener(){public void onClick(View v){openSetup();}});layout.addView(setup);setContentView(layout);
+            }
+            ExternalAppService.open(this);return;
+        }
+        if(appView){appView=false;setupShown=false;}
+        stopService(new Intent(this,ExternalAppService.class));
         int route=HomePolicy.route(c.dashboard,c.selected.contains("dashboard"),url,web!=null);
         if(route==HomePolicy.KEEP){immersive();return;}
         if(route==HomePolicy.SETUP){if(!isHome()){finish();return;}showSetup();return;}
         releaseWeb();setupShown=false;url=PanelConfig.webUrl(c.dashboard,false);loaded=false;
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        WebView.setWebContentsDebuggingEnabled(false);
         FrameLayout frame=new FrameLayout(this);web=new WebView(this);frame.addView(web,new FrameLayout.LayoutParams(-1,-1));
         message=new TextView(this);message.setTextColor(Color.WHITE);message.setBackgroundColor(0xcc222222);message.setPadding(32,24,32,24);message.setText("Waiting for network…");
         FrameLayout.LayoutParams banner=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);frame.addView(message,banner);
@@ -85,14 +97,14 @@ public class DashboardActivity extends Activity {
     private void releaseWeb(){handler.removeCallbacksAndMessages(null);WebView old=web;web=null;if(old!=null){old.stopLoading();old.destroy();}}
     private boolean allowed(String target){try{PanelConfig.webUrl(target,false);return true;}catch(IllegalArgumentException e){Toast.makeText(this,"Only HTTP/HTTPS navigation is available in this build",Toast.LENGTH_SHORT).show();return false;}}
     private int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
-    private void immersive(){getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE|View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN|View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION);}
+    private void immersive(){if(fullscreen!=null)fullscreen.apply();}
     private void failed(String reason){if(closed)return;loaded=false;message.setText(reason);message.setVisibility(View.VISIBLE);handler.removeCallbacks(retry);handler.postDelayed(retry,5000);}
     private void loadWhenConnected(){
         if(closed||loaded||web==null)return;
         if(router.selected(false)==null){message.setText("Waiting for network…");message.setVisibility(View.VISIBLE);handler.removeCallbacks(retry);handler.postDelayed(retry,2000);return;}
         networkKey=router.key(false);loaded=true;web.loadUrl(url);
     }
-    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(focused)immersive();}
+    @Override public void onWindowFocusChanged(boolean focused){super.onWindowFocusChanged(focused);if(fullscreen!=null)fullscreen.focus(focused);}
     @Override public void onBackPressed(){if(!isHome()&&!locked)finish();}
-    @Override protected void onDestroy(){if(current.get()==this)current.clear();closed=true;releaseSystemUi();releaseWeb();super.onDestroy();}
+    @Override protected void onDestroy(){if(current.get()==this)current.clear();closed=true;if(fullscreen!=null)fullscreen.close();releaseSystemUi();releaseWeb();super.onDestroy();}
 }

@@ -5,7 +5,18 @@ from .hardware import HardwareEntity,SPECS,HardwareSpec
 
 async def async_setup_entry(hass,entry,async_add_entities):
     c=entry.runtime_data
-    async_add_entities([ControllerEnabled(c),*(PanelSwitch(c,s) for s in SPECS if s.domain=="switch"),ExternalSpeakers(c)])
+    async_add_entities([ControllerEnabled(c),*(PanelSwitch(c,s) for s in SPECS if s.domain=="switch"),ExternalSpeakers(c),ReceiverEnabled(c)])
+
+class ReceiverEnabled(KnobEntity,SwitchEntity):
+    _attr_name="AirPlay receiver"
+    _attr_icon="mdi:cast-audio"
+    def __init__(self,controller):super().__init__(controller,"receiver_enabled")
+    @property
+    def available(self):return self.controller.online and self.controller.audio.online and self.controller.audio.data.get("receiver_supported") is True
+    @property
+    def is_on(self):return self.controller.audio.data.get("receiver_enabled")
+    async def async_turn_on(self,**kwargs):await self.controller.audio.command("receiver_enabled",value=True)
+    async def async_turn_off(self,**kwargs):await self.controller.audio.command("receiver_enabled",value=False)
 
 class PanelSwitch(HardwareEntity,SwitchEntity):
     @property

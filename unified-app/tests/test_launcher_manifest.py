@@ -18,8 +18,10 @@ assert activities['.IntercomCallActivity'].get(a+'exported')=='false'
 assert activities['.IntercomCallActivity'].get(a+'taskAffinity')==home.get(a+'taskAffinity')
 services={x.get(a+'name'):x for x in root.find('application').findall('service')}
 assert services['.SipService'].get(a+'exported')=='false'
-receivers=root.find('application').findall('receiver');assert len(receivers)==1
-receiver=receivers[0];assert receiver.get(a+'name')=='.BootReceiver' and receiver.get(a+'exported')=='false'
+assert services['.ExternalAppService'].get(a+'exported')=='false'
+receivers={x.get(a+'name'):x for x in root.find('application').findall('receiver')};assert set(receivers)=={'.BootReceiver','.AppRestartReceiver'}
+assert receivers['.AppRestartReceiver'].get(a+'exported')=='false' and not receivers['.AppRestartReceiver'].findall('intent-filter')
+receiver=receivers['.BootReceiver'];assert receiver.get(a+'name')=='.BootReceiver' and receiver.get(a+'exported')=='false'
 assert {x.get(a+'name') for f in receiver.findall('intent-filter') for x in f.findall('action')}=={'android.intent.action.BOOT_COMPLETED','android.intent.action.MY_PACKAGE_REPLACED'}
 assert 'android.permission.RECEIVE_BOOT_COMPLETED' in {x.get(a+'name') for x in root.findall('uses-permission')}
 print('PASS: Home/Default registration, private setup/preview, protected boot/update receiver and preserved administrator opt-out.')

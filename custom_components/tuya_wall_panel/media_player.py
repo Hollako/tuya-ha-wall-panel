@@ -31,6 +31,12 @@ class PanelPlayer(KnobEntity,MediaPlayerEntity):
     @property
     def source(self):return self.audio.data.get("source")
     @property
+    def source_list(self):return self.audio.data.get("sources") or self._attr_source_list
+    @property
+    def media_artist(self):return self.audio.data.get("artist")
+    @property
+    def media_album_name(self):return self.audio.data.get("album")
+    @property
     def media_title(self):return self.audio.data.get("title") or ("Line Input" if self.source=="Line Input" else None)
     @property
     def media_duration(self):return self.audio.data.get("duration")
@@ -41,6 +47,7 @@ class PanelPlayer(KnobEntity,MediaPlayerEntity):
     @property
     def extra_state_attributes(self):return {"audio_error":self.audio.data.get("error") or None,
         "external_speakers":self.audio.data.get("external_speakers"),"volume_scope":self.audio.data.get("volume_scope","Android playback"),
+        "receiver_state":self.audio.data.get("receiver_state"),"transport_control":self.audio.data.get("transport_control"),
         "line_input_recording_saved":False}
 
     async def async_turn_on(self):await self.audio.command("on")
@@ -51,7 +58,7 @@ class PanelPlayer(KnobEntity,MediaPlayerEntity):
     async def async_set_volume_level(self,volume):await self.audio.command("volume",value=volume)
     async def async_mute_volume(self,mute):await self.audio.command("mute",value=mute)
     async def async_select_source(self,source):
-        if source not in self.source_list:raise HomeAssistantError("Choose Android playback or Line Input")
+        if source not in self.source_list:raise HomeAssistantError("Choose an available audio source")
         await self.audio.command("source",value=source)
 
     async def async_play_media(self,media_type,media_id,**kwargs):

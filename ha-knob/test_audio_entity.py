@@ -32,6 +32,24 @@ class AudioTests(unittest.IsolatedAsyncioTestCase):
     async def test_unknown_source_rejected(self):
         with self.assertRaises(t.controller.HomeAssistantError):await self.player.async_select_source('Independent speaker output')
         t.mqtt.async_publish.assert_not_awaited()
+    async def test_shared_receiver_source_and_metadata(self):
+        self.report(.5,source='AirPlay',sources=['Android playback','Line Input','AirPlay'],title='Example',artist='Artist',album='Album')
+        self.assertIn('AirPlay',self.player.source_list)
+        self.assertEqual(self.player.source,'AirPlay');self.assertEqual(self.player.media_title,'Example')
+        self.assertEqual(self.player.media_artist,'Artist');self.assertEqual(self.player.media_album_name,'Album')
+        await self.player.async_select_source('AirPlay')
+        self.assertEqual(json.loads(t.mqtt.async_publish.await_args.args[2])['value'],'AirPlay')
+    async def test_malformed_source_list_cannot_replace_valid_state(self):
+        self.report(.4)
+        for invalid in ('AirPlay',['AirPlay','AirPlay'],['Unknown'],[{}]):
+            self.report(.9,sources=invalid)
+            self.assertEqual(self.player.volume_level,.4)
+    async def test_live_receiver_calibration_commands(self):
+        await self.c.audio.command('receiver_delay',value=-125)
+        self.assertEqual(json.loads(t.mqtt.async_publish.await_args.args[2]),{'command':'receiver_delay','value':-125})
+        self.assertFalse(t.mqtt.async_publish.await_args.kwargs['retain'])
+        for command,value in [('receiver_delay',501),('receiver_delay',.5),('receiver_trim',101),('receiver_trim',True),('receiver_enabled',1)]:
+            with self.assertRaises(t.controller.HomeAssistantError):await self.c.audio.command(command,value=value)
     async def test_unsupported_queue_and_announcement_rejected(self):
         for kw in [{'announce':True},{'enqueue':'add'}]:
             with self.assertRaises(t.controller.HomeAssistantError):await self.player.async_play_media('music','http://ha.local/audio.wav',**kw)

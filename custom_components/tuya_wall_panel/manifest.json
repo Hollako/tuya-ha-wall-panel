@@ -1,7 +1,7 @@
 {
   "domain": "tuya_wall_panel",
   "name": "Tuya Wall Panel",
-  "version": "1.14.0",
+  "version": "1.18.0",
   "config_flow": true,
   "dependencies": [
     "mqtt",

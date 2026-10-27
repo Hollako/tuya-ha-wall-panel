@@ -1,5 +1,6 @@
 """Production RTP session with loopback UDP and fake Android audio/effects only."""
 from pathlib import Path
+from engine_sources import sip_source
 import subprocess,tempfile
 r=Path(__file__).resolve().parent
 sources={
@@ -25,5 +26,5 @@ with tempfile.TemporaryDirectory(dir=r/'test-classes',prefix='sip-rtp-') as fold
     for name,body in sources.items():
         p=temp/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(body);files.append(p)
     java=r'C:\Program Files (x86)\Java\jre1.8.0_431\bin\java.exe';out=temp/'classes';out.mkdir();src=r/'src/local/wallpanel/app'
-    subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),*[str(src/n) for n in ('SipConfig.java','SipG711.java','SipRtpPacket.java','SipSdp.java','SipRtpSession.java')],*[str(p) for p in files]],check=True)
+    subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),*[str(sip_source(n)) for n in ('SipConfig.java','SipG711.java','SipRtpPacket.java','SipSdp.java','SipRtpSession.java')],*[str(p) for p in files]],check=True)
     subprocess.run([java,'-cp',str(out),'local.wallpanel.app.RtpTests'],check=True,timeout=12)

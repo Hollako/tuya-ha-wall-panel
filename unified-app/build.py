@@ -26,7 +26,10 @@ for item in json.loads((vendor/'manifest.json').read_text()):
     if jar.parent!=vendor or hashlib.sha256(jar.read_bytes()).hexdigest()!=item['sha256']:raise RuntimeError('SIP dependency integrity mismatch')
     dependencies.append(jar)
 dependencies.extend(media_jars)
-run(JAVA,'-jar',TOOLS/'ecj.jar','-encoding','UTF-8','-1.8','-nowarn','-bootclasspath',TOOLS/'android.jar','-classpath',';'.join(str(p) for p in dependencies),'-d',classes,*sorted((ROOT/'src').rglob('*.java')),*sorted(resource_java.rglob('*.java')))
+receiver_sources=ROOT.parent/'shared/audio-receiver/src'
+sip_sources=ROOT.parent/'shared/sip/src'
+bootclasspath=str(TOOLS/'android.jar')+';'+str(JAVA.parent.parent/'lib/rt.jar')
+run(JAVA,'-jar',TOOLS/'ecj.jar','-encoding','UTF-8','-1.8','-nowarn','-bootclasspath',bootclasspath,'-classpath',';'.join(str(p) for p in dependencies),'-d',classes,*sorted((ROOT/'src').rglob('*.java')),*sorted(receiver_sources.rglob('*.java')),*sorted(sip_sources.rglob('*.java')),*sorted(resource_java.rglob('*.java')))
 compiled=BUILD/'app-classes.jar'
 with zipfile.ZipFile(compiled,'w',zipfile.ZIP_DEFLATED) as archive:
     for path in classes.rglob('*.class'):archive.write(path,path.relative_to(classes).as_posix())
@@ -44,9 +47,17 @@ run(JAVA,'-jar',TOOLS/'ecj.jar','-encoding','UTF-8','-1.6','-nowarn','-bootclass
 run(JAVA,'-cp',TOOLS/'dx.jar','com.android.dx.command.Main','--dex','--output='+str(BUILD/'system-ui.dex'),ui_classes)
 ui_jar=ROOT/'assets/hardware/g10-arm64/wallpanel-system-ui.jar'
 with zipfile.ZipFile(ui_jar,'w',zipfile.ZIP_DEFLATED) as out:out.write(BUILD/'system-ui.dex','classes.dex')
-provision=ROOT/'assets/provision';hardware=ROOT/'assets/hardware/g10-arm64'
-paths={name:(provision if name.endswith('.sh') else hardware)/name for name in ('wallpanel-core','wallpanel-capture','wallpanel-privilege','wallpanel-system-ui.jar','setup-panel.sh','bootstrap-panel.sh')}
-(provision/'manifest.json').write_text(json.dumps({'v':1,'profile':'g10','files':{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in paths.items()}},indent=2),encoding='utf-8')
+for profile in ('g10','a133'):
+    for abi in ('arm64','arm32'):
+        destination=ROOT/'assets/hardware'/(profile+'-'+abi)/'wallpanel-system-ui.jar'
+        if destination!=ui_jar:shutil.copyfile(ui_jar,destination)
+provision=ROOT/'assets/provision'
+variants={}
+for abi in ('arm64','arm32'):
+    hardware=ROOT/'assets/hardware'/('g10-'+abi)
+    paths={name:(provision if name.endswith('.sh') else hardware)/name for name in ('wallpanel-core','wallpanel-capture','wallpanel-privilege','wallpanel-system-ui.jar','setup-panel.sh','bootstrap-panel.sh')}
+    variants[abi]={'files':{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in paths.items()}}
+(provision/'manifest.json').write_text(json.dumps({'v':1,'profile':'g10','files':variants['arm64']['files'],'variants':variants},indent=2),encoding='utf-8')
 apk=BUILD/'apk';apk.mkdir();shutil.copyfile(ROOT/'AndroidManifest.xml',apk/'AndroidManifest.xml');shutil.copyfile(BUILD/'classes.dex',apk/'classes.dex')
 if (ROOT/'assets').exists():shutil.copytree(ROOT/'assets',apk/'assets')
 licenses=apk/'assets/licenses/sip';licenses.mkdir(parents=True,exist_ok=True)
@@ -58,6 +69,8 @@ for jar in dependencies:
                 if not name.endswith('/'):(licenses/(jar.stem+'-'+Path(name).name)).write_bytes(archive.read(name))
 (apk/'apktool.yml').write_text('version: 2.9.3\napkFileName: tuya-wall-panel.apk\nusesFramework:\n  ids:\n  - 1\nsdkInfo:\n  minSdkVersion: 23\n  targetSdkVersion: 27\npackageInfo:\n  forcedPackageId: 127\nversionInfo:\n  versionCode: '+str(version_code)+'\n  versionName: '+version+'\n',encoding='utf-8')
 with zipfile.ZipFile(BUILD/'resources.apk') as source,zipfile.ZipFile(BUILD/'unsigned.apk','w',zipfile.ZIP_DEFLATED) as out:
+    from receiver_payloads import add_to_apk
+    add_to_apk(out)
     for name in source.namelist():out.writestr(name,source.read(name))
     for dex in sorted(dex_folder.glob('classes*.dex')):out.write(dex,dex.name)
     for path in (apk/'assets').rglob('*'):
@@ -93,6 +106,6 @@ with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as out:
     out.writestr('META-INF/MANIFEST.MF',manifest);out.writestr('META-INF/WALLPANEL.SF',sf);out.writestr('META-INF/WALLPANEL.RSA',signature)
     for name,data in files:out.writestr(name,data,compress_type=zipfile.ZIP_STORED if name=="assets/intercom-chime.wav" else zipfile.ZIP_DEFLATED)
 shutil.copyfile(temporary,output)
-(ROOT/'build-result.json').write_text(json.dumps({'version':version,'package':'local.wallpanel.app','apk':output.name,'bytes':output.stat().st_size,'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'installed':False,'hardware_takeover':False},indent=2),encoding='utf-8')
+(ROOT/'build-result.json').write_text(json.dumps({'version':version,'package':'local.wallpanel.app','apk':output.name,'bytes':output.stat().st_size,'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'installed':False,'hardware_takeover':False,'supported_abis':['armeabi-v7a','arm64-v8a'],'a133_hardware_ready':False},indent=2),encoding='utf-8')
 print('BUILT',output.name,output.stat().st_size,'bytes. Not installed.')
 run(sys.executable,ROOT/'build_setup_package.py')

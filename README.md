@@ -5,8 +5,25 @@
 A modular Android wall-panel app and a local Home Assistant integration for
 dashboard, knob, buttons, relays, display, audio and SIP video intercom control.
 
-**Current local versions:** Android app **0.17.0**; HA integration **1.14.0**.
-These updates are local; the published release remains app 0.16.0 / HA 1.13.1.
+[ARM32/ARM64 build and hardware status](unified-app/MULTI_ABI.md).
+
+**Release v1.18.0:** HA integration **1.18.0**, unified Android app **0.23.0**,
+and standalone Audio Receiver **1.2.0**. Both APKs include ARM32 and ARM64.
+
+**[Download APKs and installation files](https://github.com/Hollako/tuya-ha-wall-panel/releases/tag/v1.18.0)**
+— open **Assets** below the release notes:
+
+- `tuya-wall-panel-0.23.0.apk`: unified dashboard, hardware, SIP and optional AirPlay.
+- `audio-receiver-1.2.0.apk`: standalone AirPlay receiver, without the unified UI.
+- `tuya-wall-panel-0.23.0-setup.zip`: unified APK and one-time setup/migration tools.
+- `tuya-wall-panel.zip`: HA integration for manual installation; HACS installs it separately.
+- `receiver-native-source-and-relink-1.2.0.tar.gz`: matching native sources, notices,
+  configuration, objects and libraries. `SHA256SUMS.txt` covers all downloads.
+
+Install one receiver product on a panel. The unified app already includes AirPlay;
+do not also run the standalone receiver there. APK installation preserves settings
+when its package and signing identity match. Initial privileged preparation is
+still required on supported firmware; the APK cannot grant itself root.
 Tested hardware: **Sznaner G10 Music Host / Rockchip PX30, Android 8, 2 GB RAM**.
 Other Tuya models require hardware discovery and a matching adapter; installing
 the app alone does not make an untested model compatible with the G10 wiring.
@@ -31,12 +48,13 @@ require Home Assistant 2026.3 or newer. No cloud service is required by this pro
 
 ## Features
 
-- Knob pages for lights, climate, covers, media players, weather and clock.
+- Knob pages for lights, climate, covers and media players; weather/date/time screensaver.
 - Four independent button event streams and configurable single/double actions.
 - Two relays, with optional local button assignments that work offline.
 - Main display brightness, dim/off timers, instant wake and knob display controls.
-- Local knob-only activity wake/white LED, with red LED and small LCD off after 15 seconds idle.
+- Local knob-only activity wake/white LED, returning to red LED and the configured idle screensaver after 15 seconds.
 - Audio media player, volume/mute, source selection and amplifier routing.
+- Shared AirPlay receiver engine, local media/knob feedback, live HA timing/trim controls and local SIP call interruption.
 - Dashboard URL, Open setup, Reload dashboard, Restart app, reboot and screenshots.
 - Optional SIP intercom with two-way audio, ringtone and an uncropped RTSP preview.
 - Hikvision door-unlock adapter; a second door can be enabled in settings.
@@ -68,6 +86,9 @@ Older migration notes describe development history, not the current installation
 | --- | --- |
 | `custom_components/tuya_wall_panel` | Canonical HACS integration source and local brand assets |
 | `unified-app/src` | Android app, SIP, WebView and MQTT runtime |
+| `shared/audio-receiver` | Single receiver engine consumed by unified and standalone APKs |
+| `shared/sip` | Single SIP protocol/codec core |
+| `airplay-app` | Dedicated receiver launcher, native backend and build recipes |
 | `unified-app/native` | Privileged hardware worker, display/audio and management |
 | `unified-app/assets/provision` | Supported-panel preparation and restore scripts |
 | `wallpanel-hardware` | MCU protocol headers required by the native build |

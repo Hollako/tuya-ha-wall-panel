@@ -1,5 +1,5 @@
 """Behavior checks with fake HA services/MQTT; never connect to or operate a home."""
-import asyncio,importlib,sys,types,unittest
+import asyncio,importlib,sys,types,unittest,json
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -81,8 +81,8 @@ class ModelTests(unittest.TestCase):
         self.assertIsNone(model.adjust('media_player.a','playing',{'volume_level':.4,'supported_features':1024},1,{}))
     def test_media_press_uses_only_supported_commands(self):
         attrs={'supported_features':16397,'is_volume_muted':False}
-        self.assertEqual(model.press('media_player.a','playing',attrs).service,'media_pause')
-        self.assertEqual(model.press('media_player.a','paused',attrs).service,'media_play')
+        self.assertEqual(model.press('media_player.a','playing',attrs).service,'volume_mute')
+        self.assertEqual(model.media_hold('media_player.a','paused',attrs).service,'media_play')
         attrs['supported_features']=8
         self.assertEqual(model.press('media_player.a','on',attrs).data['is_volume_muted'],True)
         self.assertIsNone(model.press('media_player.a','idle',{'supported_features':512}))
@@ -131,18 +131,84 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             await c.gesture('rotate_right');await c._flush()
             self.hass.services.async_call.assert_awaited_with('media_player','volume_set',{'entity_id':'media_player.a','volume_level':.45},blocking=True)
             await c.gesture('press')
+            self.hass.services.async_call.assert_awaited_with('media_player','volume_mute',{'entity_id':'media_player.a','is_volume_muted':True},blocking=True)
+            await c.gesture('long_press')
             self.hass.services.async_call.assert_awaited_with('media_player','media_pause',{'entity_id':'media_player.a'},blocking=True)
+            self.assertIsNone(c.menu.cursor)
             self.assertIn('45%',mqtt.async_publish.await_args.args[2])
         finally:await c.stop()
+    async def test_local_media_routing_and_navigation_do_not_duplicate_audio(self):
+        self.entry.options={'entities':['media_player.a','light.a']}
+        c=controller.KnobController(self.hass,self.entry);c.online=True
+        c.hardware.local_media_supported=True
+        c._is_local_media=lambda eid:eid=='media_player.a'
+        try:
+            await c.render()
+            routes=[json.loads(a.args[2]) for a in mqtt.async_publish.await_args_list if a.args[1].endswith('/knob/media/set')]
+            self.assertTrue(routes[-1]['active']);self.assertEqual(routes[-1]['step'],5)
+            self.assertEqual(routes[-1]['entity'],'media_player.a')
+            for event in ('rotate_right','press','long_press'):
+                c._mqtt_event(types.SimpleNamespace(retain=False,payload=json.dumps({'event_type':event,'local_handled':True})))
+            await asyncio.sleep(0)
+            self.hass.services.async_call.assert_not_awaited()
+            c.options['buttons']={'1':{'press':'menu'}}
+            await c.button_event('1','press');self.assertIsNotNone(c.menu.cursor)
+            self.assertFalse(json.loads([a.args[2] for a in mqtt.async_publish.await_args_list if a.args[1].endswith('/knob/media/set')][-1])['active'])
+            await c.button_event('1','press');await c.gesture('double_press')
+            self.assertEqual(c.menu.active,'light.a')
+            self.assertFalse(json.loads([a.args[2] for a in mqtt.async_publish.await_args_list if a.args[1].endswith('/knob/media/set')][-1])['active'])
+            await c.select('media_player.a');await c.set_enabled(False)
+            self.assertFalse(json.loads([a.args[2] for a in mqtt.async_publish.await_args_list if a.args[1].endswith('/knob/media/set')][-1])['active'])
+        finally:await c.stop()
+
+    async def test_remote_media_mute_icon_tracks_selected_entity_and_clears_on_navigation(self):
+        self.entry.options={'entities':['media_player.a','light.a']}
+        c=controller.KnobController(self.hass,self.entry);c.online=True;c.hardware.media_icons_supported=True
+        try:
+            self.hass.values['media_player.a'].attributes['is_volume_muted']=True
+            await c.render()
+            self.assertEqual(mqtt.async_publish.await_args.args[1],'test/panel/knob/display/media_frame/set')
+            self.assertTrue(mqtt.async_publish.await_args.args[2].endswith('\nON'))
+            self.hass.values['media_player.a'].attributes['is_volume_muted']=False
+            await c.render();self.assertTrue(mqtt.async_publish.await_args.args[2].endswith('\nOFF'))
+            await c.gesture('double_press')
+            self.assertEqual(mqtt.async_publish.await_args.args[1],'test/panel/knob/display/frame/set')
+            self.assertEqual(len(mqtt.async_publish.await_args.args[2].splitlines()),3)
+        finally:await c.stop()
+
+    async def test_local_entity_resolution_uses_own_registry_unique_id(self):
+        from unittest.mock import patch,Mock
+        registry=Mock();registry.async_get_entity_id.return_value='media_player.renamed_panel'
+        er=types.ModuleType('homeassistant.helpers.entity_registry');er.async_get=lambda h:registry
+        with patch.dict(sys.modules,{'homeassistant.helpers.entity_registry':er}):
+            self.assertTrue(self.c._is_local_media('media_player.renamed_panel'))
+            self.assertFalse(self.c._is_local_media('media_player.some_other_panel'))
+            registry.async_get_entity_id.assert_called_with('media_player','tuya_wall_panel','test_audio_player')
+
     async def test_pending_commands_keep_original_targets(self):
         await self.c.gesture('rotate_right');await self.c.gesture('double_press');await self.c.gesture('rotate_left');await self.c._flush()
         calls=self.hass.services.async_call.await_args_list
         self.assertEqual({c.args[2]['entity_id'] for c in calls},{'light.a','climate.a'})
-    async def test_clock_uses_timezone_and_preserves_midnight_zero(self):
-        await self.c.select('clock.local')
-        frame=mqtt.async_publish.await_args.args[2]
-        self.assertEqual(frame.splitlines()[1],'00:05')
-        self.assertIn('23 Oct 2026',frame)
+    async def test_screensaver_uses_ha_timezone_weather_and_no_control_pages(self):
+        self.assertNotIn('clock.local',self.c.targets)
+        self.assertNotIn('weather.a',self.c.targets)
+        await self.c.render_screensaver()
+        call=mqtt.async_publish.await_args
+        self.assertEqual(call.args[1],'test/panel/knob/display/screensaver/set')
+        self.assertEqual(call.args[2],'10800\n24h\nsunny\n28°C')
+        self.assertFalse(call.kwargs['retain'])
+        count=mqtt.async_publish.await_count
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_count,count)
+
+    async def test_explicitly_cleared_weather_does_not_restore_legacy_choice(self):
+        self.entry.options={'screensaver_weather':''}
+        c=controller.KnobController(self.hass,self.entry);c.online=True
+        try:
+            await c.render_screensaver()
+            self.assertEqual(mqtt.async_publish.await_args.args[2],'10800\n24h\nunavailable\n--')
+        finally:await c.stop()
+
     async def test_frames_do_not_publish_follow_or_power(self):
         await self.c.render()
         self.assertTrue(all(call.args[1].endswith('/display/frame/set') for call in mqtt.async_publish.await_args_list))
@@ -164,14 +230,22 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_ha_page_order_is_used(self):
         self.entry.options={'page_order':['clock.local','cover.a','light.a']}
         c=controller.KnobController(self.hass,self.entry)
-        self.assertEqual(c.targets[:3],['clock.local','cover.a','light.a']);await c.stop()
-    async def test_weather_is_read_only_and_forecast_response_used(self):
-        self.hass.services.async_call.return_value={'weather.a':{'forecast':[{'datetime':'2026-10-23T12:00:00+00:00','temperature':30,'condition':'sunny'}]}}
-        await self.c.select('weather.a')
-        if self.c._weather_task:await self.c._weather_task
-        await self.c.gesture('rotate_right')
-        self.assertTrue(all(a.args[:2]==('weather','get_forecasts') for a in self.hass.services.async_call.await_args_list))
-        self.assertIn('30°C',mqtt.async_publish.await_args.args[2])
+        self.assertEqual(c.targets[:3],['cover.a','light.a','climate.a']);await c.stop()
+    async def test_screensaver_unavailable_off_and_selected_weather(self):
+        self.c.options['screensaver_enabled']=False
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_args.args[2],'OFF')
+        self.c.options['screensaver_enabled']=True
+        self.hass.values['weather.a']=state('unavailable',temperature=99)
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_args.args[2],'10800\n24h\nunavailable\n--')
+        self.entry.options={'screensaver_weather':'weather.other','clock_format':'12h'}
+        c=controller.KnobController(self.hass,self.entry);c.online=True
+        try:
+            await c.render_screensaver()
+            self.assertEqual(mqtt.async_publish.await_args.args[2],'10800\n12h\nunavailable\n--')
+            self.hass.services.async_call.assert_not_awaited()
+        finally:await c.stop()
 
     async def test_audio_commands_are_not_retained_and_independent_of_knob(self):
         self.c.enabled=False;self.c.audio.online=True

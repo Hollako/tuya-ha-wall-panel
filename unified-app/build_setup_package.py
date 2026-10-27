@@ -7,7 +7,16 @@ build=json.loads((r/'build-result.json').read_text());apk=r/build['apk'];payload
 out=r/'release';out.mkdir(exist_ok=True)
 readme='''Tuya HA Wall Panel - panel setup kit
 
-Supports only the verified G10/PX30 wiring currently implemented by the app.
+One APK supports ARM32 (armeabi-v7a) and ARM64 (arm64-v8a).
+Dashboard and SIP are available on the A133/Android 11 profile. A133 direct hardware
+controls remain disabled pending verification; its four relays and fb1 knob are
+not mapped using the G10 wiring. Do not use the G10 setup procedure on the A133.
+
+To install ONLY the app on an authorized ARM panel, without root or vendor changes:
+   python bootstrap_panel.py --device PANEL_IP:5555 --app-only
+
+The full root/hardware setup below supports only verified G10/PX30 wiring.
+The installer chooses ARM32/ARM64 payloads from the panel's supported ABI list.
 The APK includes Panel installation: check, prepare/repair and restore previous setup.
 If app-level root is available, Prepare requests root and installs support itself.
 On firmware that blocks app su (including our current panel), one-time ADB setup is
@@ -54,7 +63,26 @@ To return to the retained standalone installation:
 Keep the protected device backups and the local sip-migration-backups folder.
 '''
 package=out/('tuya-wall-panel-'+build['version']+'-setup.zip')
+readme+='''
+AirPlay receiver merge (disabled until prepared):
+The unified and dedicated receiver builds use shared/audio-receiver sources.
+On an existing trusted-root panel with the working standalone Audio Receiver,
+install this APK first, then inspect the read-only plan:
+   python receiver_cutover.py --device PANEL_IP:5555 --adb PATH_TO_ADB
+To perform the backed-up handoff:
+   python receiver_cutover.py --device PANEL_IP:5555 --adb PATH_TO_ADB --apply
+It disables but retains the standalone app/data, preserves receiver name, timing
+offset and trim, changes only the existing PTP helper's authorized app UID and
+opens unified Home. No reboot or audio tests. The printed device backup path is
+needed for --rollback BACKUP_PATH --apply. It refuses active SIP calls, unknown
+helpers/UIDs or missing existing PTP init service. Fresh receiver provisioning is
+separate; G10 hardware setup alone does not provision AirPlay timing support.
+Audio receiver settings are available from setup. Blank receiver interface follows
+the HA network assignment. The unified optional receiver web server stays OFF.
+Please test playback, mute/volume, call interruption/resume and both reboot types.
+'''
 with zipfile.ZipFile(package,'w',zipfile.ZIP_DEFLATED) as archive:
     archive.write(apk,apk.name);archive.write(r/'bootstrap_panel.py','bootstrap_panel.py');archive.write(r/'migrate_sip.py','migrate_sip.py');archive.writestr('README.txt',readme)
+    archive.write(r/'receiver_cutover.py','receiver_cutover.py');archive.write(r/'build-result.json','build-result.json')
 (out/'README.txt').write_text(readme,encoding='utf-8')
 print('Built setup kit:',package)

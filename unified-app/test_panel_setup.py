@@ -3,6 +3,7 @@ import subprocess,tempfile
 from pathlib import Path
 r=Path(__file__).resolve().parent
 sources={
+'android/os/Build.java':'package android.os;public class Build {public static String[] SUPPORTED_ABIS={"arm64-v8a","armeabi-v7a"};}',
 'android/content/Context.java':'''package android.content; public class Context { public static boolean enabled; public static int stops,changes,starts; public java.io.File getFilesDir(){return new java.io.File("unused-test-path");} public android.content.res.AssetManager getAssets(){return null;} public boolean stopService(Intent i){stops++;return true;} }''',
 'android/content/Intent.java':'''package android.content; public class Intent {public Intent(Context c,Class<?> cl){}}''',
 'android/content/res/AssetManager.java':'''package android.content.res; public class AssetManager {public java.io.InputStream open(String p)throws java.io.IOException{throw new AssertionError("Unexpected asset staging");}}''',
@@ -23,5 +24,5 @@ with tempfile.TemporaryDirectory(dir=r/'test-classes',prefix='setup-') as folder
     for name,body in sources.items():
         path=temp/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body);files.append(path)
     java=r'C:\Program Files (x86)\Java\jre1.8.0_431\bin\java.exe';out=temp/'classes';out.mkdir()
-    subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),str(r/'src/local/wallpanel/app/PanelSetup.java'),*[str(p) for p in files]],check=True)
+    subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),str(r/'src/local/wallpanel/app/PanelSetup.java'),str(r/'src/local/wallpanel/app/NativeAssets.java'),*[str(p) for p in files]],check=True)
     subprocess.run([java,'-cp',str(out),'local.wallpanel.app.SetupTests'],check=True,timeout=15)

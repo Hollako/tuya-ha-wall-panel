@@ -15,12 +15,10 @@ def settings_schema(values, initial=False):
     if initial:
         fields[vol.Required("name", default="Tuya Wall Panel")] = selector.TextSelector()
         fields[vol.Required("mqtt_base", default=DEFAULT_BASE)] = selector.TextSelector()
-    fields[vol.Required("entities", default=values.get("entities", []))] = selector.EntitySelector(selector.EntitySelectorConfig(domain=list(DOMAINS), multiple=True,reorder=True))
+    fields[vol.Required("entities", default=[e for e in values.get("entities", []) if e.partition(".")[0] in DOMAINS])] = selector.EntitySelector(selector.EntitySelectorConfig(domain=list(DOMAINS), multiple=True,reorder=True))
     for name, minimum, maximum, step in [("brightness_step",1,25,1),("cover_step",1,25,1),("volume_step",1,25,1),("temperature_step",0,5,0.5),("menu_timeout",5,120,1)]:
         fields[vol.Required(name, default=values.get(name,DEFAULTS[name]))] = selector.NumberSelector(selector.NumberSelectorConfig(min=minimum,max=maximum,step=step,mode=selector.NumberSelectorMode.BOX))
     fields[vol.Required("auto_led", default=values.get("auto_led",False))] = selector.BooleanSelector()
-    fields[vol.Required("include_clock", default=values.get("include_clock",True))] = selector.BooleanSelector()
-    fields[vol.Required("clock_format", default=values.get("clock_format","24h"))] = selector.SelectSelector(selector.SelectSelectorConfig(options=["24h","12h"],mode=selector.SelectSelectorMode.DROPDOWN))
     return vol.Schema(fields)
 
 class KnobConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -47,7 +45,18 @@ class KnobConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_init(self,user_input=None):
-        return self.async_show_menu(step_id="init",menu_options=["entities","buttons","order","dashboard"])
+        return self.async_show_menu(step_id="init",menu_options=["entities","screensaver","buttons","order","dashboard"])
+
+    async def async_step_screensaver(self,user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(title="",data={**self.config_entry.options,"screensaver_weather":"",**user_input})
+        values=self.values()
+        weather=values["screensaver_weather"]
+        return self.async_show_form(step_id="screensaver",data_schema=vol.Schema({
+            vol.Required("screensaver_enabled",default=values["screensaver_enabled"]):selector.BooleanSelector(),
+            (vol.Optional("screensaver_weather",default=weather) if weather else vol.Optional("screensaver_weather")):selector.EntitySelector(selector.EntitySelectorConfig(domain="weather")),
+            vol.Required("clock_format",default=values["clock_format"]):selector.SelectSelector(selector.SelectSelectorConfig(options=["24h","12h"],mode=selector.SelectSelectorMode.DROPDOWN))
+        }))
 
     async def async_step_dashboard(self,user_input=None):
         errors={}
@@ -60,7 +69,10 @@ class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
         }),errors=errors)
 
     def values(self):
-        return {**DEFAULTS,**self.config_entry.data,**self.config_entry.options}
+        values={**DEFAULTS,**self.config_entry.data,**self.config_entry.options}
+        if "screensaver_weather" not in self.config_entry.data and "screensaver_weather" not in self.config_entry.options:
+            values["screensaver_weather"]=next((e for e in values["entities"] if e.startswith("weather.")),"")
+        return values
 
     async def async_step_entities(self,user_input=None):
         errors={}
@@ -71,7 +83,7 @@ class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
                 user_input["entities"]=list(dict.fromkeys(user_input["entities"]))
                 # Other Configure pages retain their settings when targets change.
                 changed=user_input["entities"]!=self.values()["entities"]
-                return self.async_create_entry(title="",data={**self.config_entry.options,**user_input,**({"page_order":[]} if changed else {})})
+                return self.async_create_entry(title="",data={**self.config_entry.options,"screensaver_weather":self.values()["screensaver_weather"],**user_input,**({"page_order":[]} if changed else {})})
         values={**self.values(),**(user_input or {})}
         return self.async_show_form(step_id="entities",data_schema=settings_schema(values),errors=errors)
 
@@ -106,7 +118,7 @@ class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
 
     async def async_step_order(self,user_input=None):
         values=self.values()
-        pages=list(values["entities"])+(["clock.local"] if values["include_clock"] else [])
+        pages=[e for e in values["entities"] if e.partition(".")[0] in DOMAINS]
         if not hasattr(self,"_order"):
             self._order=[e for e in values["page_order"] if e in pages]+[e for e in pages if e not in values["page_order"]]
         if not self._order:return self.async_abort(reason="no_pages")

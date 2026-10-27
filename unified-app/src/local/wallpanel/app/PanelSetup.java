@@ -15,8 +15,9 @@ final class PanelSetup {
     static File stage(Context context)throws Exception{
         File parent=context.getFilesDir().getCanonicalFile(),folder=new File(parent,"panel-setup");if(!folder.mkdirs()&&!folder.isDirectory())throw new IOException("Setup folder unavailable");
         if(!folder.getCanonicalFile().getParentFile().equals(parent))throw new IOException("Unsafe setup folder");
-        JSONObject sums=new JSONObject(new String(bytes(context.getAssets().open("provision/manifest.json"),8192),"UTF-8")).getJSONObject("files");
-        for(String name:FILES){String asset=name.endsWith(".sh")?"provision/"+name:"hardware/g10-arm64/"+name;byte[] content=bytes(context.getAssets().open(asset),1024*1024);if(!sha(content).equals(sums.getString(name)))throw new IOException("Setup integrity check failed");
+        String abi=NativeAssets.abi(android.os.Build.SUPPORTED_ABIS);String prefix=NativeAssets.prefix("g10",android.os.Build.SUPPORTED_ABIS);
+        JSONObject sums=new JSONObject(new String(bytes(context.getAssets().open("provision/manifest.json"),16384),"UTF-8")).getJSONObject("variants").getJSONObject(abi).getJSONObject("files");
+        for(String name:FILES){String asset=name.endsWith(".sh")?"provision/"+name:prefix+name;byte[] content=bytes(context.getAssets().open(asset),1024*1024);if(!sha(content).equals(sums.getString(name)))throw new IOException("Setup integrity check failed");
             File file=new File(folder,name);FileOutputStream out=new FileOutputStream(file);try{out.write(content);out.getFD().sync();}finally{out.close();}if(!file.setExecutable(true,true))throw new IOException("Setup file permissions failed");
         }return folder;
     }

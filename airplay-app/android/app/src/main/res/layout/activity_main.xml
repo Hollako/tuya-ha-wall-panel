@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+  <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="vertical">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Receiver"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etName"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Receiver name (AirPlay and Bluetooth)"
+        android:inputType="text"/>
+
+    <Switch
+        android:id="@+id/swEnabled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enable Receiver"
+        android:layout_marginTop="8dp"/>
+
+    <Switch
+        android:id="@+id/swAutostart"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Start at Boot"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Volume"
+        android:layout_marginTop="16dp"/>
+
+    <SeekBar
+        android:id="@+id/sbVolume"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="100"
+        android:progress="100"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Audio timing (live)"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="20dp"/>
+
+    <TextView
+        android:id="@+id/tvLatencyValue"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0 ms"
+        android:textSize="20sp"
+        android:gravity="center"
+        android:layout_marginTop="8dp"/>
+
+    <SeekBar
+        android:id="@+id/sbLatency"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:max="1000"
+        android:progress="500"
+        android:contentDescription="Audio timing offset in milliseconds"/>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+      <TextView
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="wrap_content"
+          android:text="Earlier (-500 ms)"/>
+      <TextView
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="wrap_content"
+          android:gravity="end"
+          android:text="Later (+500 ms)"/>
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+      <Button
+          android:id="@+id/btnLatencyMinus"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="wrap_content"
+          android:text="-5 ms"/>
+      <Button
+          android:id="@+id/btnLatencyReset"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="wrap_content"
+          android:text="Reset"/>
+      <Button
+          android:id="@+id/btnLatencyPlus"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="wrap_content"
+          android:text="+5 ms"/>
+    </LinearLayout>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Changes apply live and are saved automatically. Positive values delay this panel. Large changes may take a moment to settle or cause a brief audio adjustment. Keep the other panel unchanged while calibrating."
+        android:textSize="12sp"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Bluetooth receiver"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"/>
+    <TextView
+        android:id="@+id/tvBluetooth"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Checking Bluetooth..."
+        android:layout_marginTop="8dp"/>
+    <Button
+        android:id="@+id/btnBluetoothEnable"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Turn on Bluetooth"/>
+    <Button
+        android:id="@+id/btnBluetoothPair"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pair phone (visible for 2 minutes)"/>
+    <Button
+        android:id="@+id/btnBluetoothSettings"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Bluetooth settings"/>
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Pause AirPlay before testing Bluetooth. Use the phone or Android media volume for Bluetooth. Automatic source selection and call priority will be added later."
+        android:textSize="12sp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Home Assistant"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"/>
+
+    <Switch
+        android:id="@+id/swHaEnabled"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Enable HTTP API"/>
+
+    <EditText
+        android:id="@+id/etHaPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Port (default: 8099)"
+        android:inputType="number"
+        android:layout_marginTop="8dp"/>
+
+    <EditText
+        android:id="@+id/etHaToken"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Bearer Token (optional)"
+        android:inputType="textPassword"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Advanced"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"/>
+
+    <EditText
+        android:id="@+id/etRtspPort"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="RTSP Port (default: 7000)"
+        android:inputType="number"/>
+
+<EditText
+        android:id="@+id/etSuCommand"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="su command (default: su -c)"
+        android:inputType="text"
+        android:layout_marginTop="8dp"/>
+
+    <Button
+        android:id="@+id/btnApply"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Apply other settings &amp; Restart"
+        android:layout_marginTop="16dp"/>
+
+    <Button
+        android:id="@+id/btnCheckRoot"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Check PTP Helper"
+        android:layout_marginTop="8dp"/>
+
+    <Button
+        android:id="@+id/btnLogs"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="View Logs"
+        android:layout_marginTop="8dp"/>
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Status"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:layout_marginTop="24dp"
+        android:layout_marginBottom="8dp"/>
+
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Initializing..."
+        android:textSize="12sp"
+        android:fontFamily="monospace"
+        android:background="#f0f0f0"
+        android:textColor="#1b1b1b"
+        android:padding="8dp"/>
+
+  </LinearLayout>
+</ScrollView>

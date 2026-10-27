@@ -1,6 +1,16 @@
 # Tuya HA Wall Panel — unified app
 
-Current local build **0.17.0**: knob-only wake/white LED on physical use, then
+Current local build **0.22.0** adds [installed-app mode](EXTERNAL_APP_MODE.md) with app selection, administrator hotspot, root-backed task recovery and intercom return. ARM32 and ARM64 remain in one APK. [Architecture and A133 status](MULTI_ABI.md): Dashboard/SIP profile available; A133 direct hardware remains disabled pending verification. Installed on the G10 with its web dashboard still selected; external-app physical checks are pending. The A133 remains unchanged.
+
+Build **0.19.0** / HA **1.16.0** adds [direct local media knob control](LOCAL_MEDIA_KNOB.md): rotate volume, press mute, hold play/pause, double press next page. The panel's own Audio entity uses its local audio engine and knob feedback; other media entities use HA.
+
+Builds **0.18.0–0.18.2** add the [knob screensaver](KNOB_SCREENSAVER.md): local time/date, weather icons and temperature, with a 15-second return from controls and an optional edge circle.
+
+Build **0.17.1**: prevent the dashboard's native gray status-bar
+background from returning after UI visibility changes. No HA or receiver-app
+changes. See `DASHBOARD_FULLSCREEN.md`. Not published to GitHub.
+
+Previous local build **0.17.0**: knob-only wake/white LED on physical use, then
 small display off/red LED after 15 seconds of inactivity. Local policy, optional
 HA Knob activity mode switch. See `KNOB_ACTIVITY.md`. Not published to GitHub.
 
@@ -130,7 +140,7 @@ were performed during the 0.2.0/0.3.0 work. The existing setup remains active.
   third-party Android libraries or receiver/intercom services.
 - Random per-install `wp_…` identity, independent of IP/MAC, saved once and retained
   across updates. Native settings rendering excludes broker/HA credentials.
-- Inactive ARM64 G10 worker included as an APK asset (not extracted or started).
+- ARM32/ARM64 G10 workers and guarded A133 candidate probes included as APK assets (not extracted or started).
   Buttons, relays and offline local bindings are implemented and tested with fake
   UART; other hardware modules have not migrated. See `native/PROTOCOL.md`.
 - Android Home launcher registration and **Set as Home app** entry to Android's

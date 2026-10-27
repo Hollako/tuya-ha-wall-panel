@@ -6,6 +6,7 @@ public final class BootReceiver extends BroadcastReceiver {
         if(intent==null)return;String action=intent.getAction();
         if(!Intent.ACTION_BOOT_COMPLETED.equals(action)&&!Intent.ACTION_MY_PACKAGE_REPLACED.equals(action))return;
         BridgeService.ensureStarted(context);
-        SipRuntime.reconcile(context);
+        SipRuntime.reconcile(context);ExternalAppService.reconcile(context);
+        ReceiverRuntime.reconcile(context);
     }
 }

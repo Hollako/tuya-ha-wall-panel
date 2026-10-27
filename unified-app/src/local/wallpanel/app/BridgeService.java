@@ -8,6 +8,8 @@ import org.json.*;
 
 /** Foreground owner of the app's optional buttons/relay worker and MQTT transport. */
 public final class BridgeService extends Service implements NativeWorker.Listener {
+    static boolean receiverStarted(){BridgeService s=instance;return s!=null&&s.audioEngine!=null&&s.audioEngine.receiverStarted();}
+    static void receiverEnded(){BridgeService s=instance;if(s!=null&&s.audioEngine!=null)s.audioEngine.receiverEnded();}
     private static volatile BridgeService instance;private long intercomWake;
     static Boolean beginIntercom(){BridgeService s=instance;if(s==null)return null;Boolean power=s.audioEngine==null?null:Boolean.valueOf(s.audioEngine.powered());if(s.audioEngine!=null)s.audioEngine.beginIntercom();if(s.worker!=null&&s.config!=null){if(s.config.selected.contains("amplifier"))s.worker.send("audio power 1");if(s.config.selected.contains("display"))s.worker.send("display power 1");}return power;}
     static void endIntercom(Boolean power){BridgeService s=instance;if(s==null)return;if(s.audioEngine!=null)s.audioEngine.endIntercom();if(power!=null&&s.worker!=null&&s.config!=null&&s.config.selected.contains("amplifier"))s.worker.send("audio power "+(power.booleanValue()?1:0));}
@@ -19,6 +21,11 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     private volatile MqttSession mqtt;
     private volatile JSONObject state;
     private volatile ManagementRuntime management;
+    private volatile LocalMediaKnob localMedia=LocalMediaKnob.off();
+    private NativeWorker muteWorker;private Boolean muteSent;
+    private NativeWorker localFrameWorker;private String localFrameSent="";
+    private final ThreadLocal<Boolean> nativeCallback=new ThreadLocal<Boolean>();
+    private final java.util.concurrent.ThreadPoolExecutor feedback=new java.util.concurrent.ThreadPoolExecutor(1,1,0,java.util.concurrent.TimeUnit.MILLISECONDS,new java.util.concurrent.ArrayBlockingQueue<Runnable>(128),new java.util.concurrent.ThreadFactory(){public Thread newThread(Runnable work){return new Thread(work,"wallpanel-native-feedback");}});
     private volatile AudioEngine audioEngine;
     private volatile JSONObject audioState;
     private volatile boolean audioOnline;
@@ -41,7 +48,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     private String haNetworkKey="";
     private final NetworkRouter.Listener networkChanges=new NetworkRouter.Listener(){public void changed(){NetworkRouter router=NetworkRouter.get(BridgeService.this);String next=router.key(false);if(!next.equals(haNetworkKey)){haNetworkKey=next;MqttSession current=mqtt;if(current!=null)current.close();}}};
     @Override public IBinder onBind(Intent intent){return null;}
-    @Override public void onCreate(){super.onCreate();NetworkRouter router=NetworkRouter.get(this);haNetworkKey=router.key(false);router.add(networkChanges);store=new ConfigStore(this);instance=this;}
+    @Override public void onCreate(){super.onCreate();NetworkRouter router=NetworkRouter.get(this);haNetworkKey=router.key(false);router.add(networkChanges);store=new ConfigStore(this);loadLocalMedia();instance=this;}
     @Override public int onStartCommand(Intent intent,int flags,int id){
         if(intent!=null&&STOP.equals(intent.getAction())){publish("/app/availability","offline",true);store.setRuntimeEnabled(false);store.runtimeStatus("Hardware stopped by administrator");stopSelf();return START_NOT_STICKY;}
         if(intent!=null&&START.equals(intent.getAction()))store.setRuntimeEnabled(true);
@@ -89,13 +96,14 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             try{
                 String base=config.mqttBase;
                 String client="wp-"+config.deviceId.replace("wp_","");if(client.length()>23)client=client.substring(0,23);
-                session.open(config,client,base+"/availability",new String[]{base+"/relay/+/set",base+"/button/+/binding/set",base+"/app/command/set",base+"/app/dashboard/set",base+"/knob/display/+/set",base+"/knob/led/color/set",base+"/audio/command/set",base+"/audio/hardware_level/set",base+"/device/command/set",base+"/device/brightness/set",base+"/display/policy/+/set","homeassistant/status"});
+                session.open(config,client,base+"/availability",new String[]{base+"/relay/+/set",base+"/button/+/binding/set",base+"/app/command/set",base+"/app/dashboard/set",base+"/knob/display/+/set",base+"/knob/media/set",base+"/knob/led/color/set",base+"/audio/command/set",base+"/audio/hardware_level/set",base+"/device/command/set",base+"/device/brightness/set",base+"/display/policy/+/set","homeassistant/status"});
                 if(stopping){session.close();break;}
                 mqttOnline=true;refreshRuntimeStatus();synchronizeState();retry=1000;
                 while(!stopping){MqttSession.Message m=session.next();
                     if(m!=null){
                         if(m.topic.equals("homeassistant/status")&&m.payload.equals("online"))synchronizeState();
                         else if(m.topic.equals(base+"/app/dashboard/set"))applyDashboard(m.payload);
+                        else if(m.topic.equals(base+"/knob/media/set")){if(!m.retained)configureLocalMedia(m.payload);}
                         else if(m.topic.equals(base+"/audio/command/set")){if(!m.retained)audioCommand(m.payload);}
                         else if(m.topic.equals(base+"/audio/hardware_level/set")){
                             String op=AudioPolicy.level(m.payload);NativeWorker active=worker;if(!m.retained&&config.selected.contains("amplifier")&&op!=null&&active!=null)active.send(op);
@@ -107,6 +115,9 @@ public final class BridgeService extends Service implements NativeWorker.Listene
                                 AppRestartReceiver.request(this,new Runnable(){public void run(){publish("/app/availability","offline",true);}});
                             }
                             else if("SCREENSHOT".equals(operation)){ManagementRuntime current=management;if(current!=null)current.screenshot();}
+                            else if(operation!=null&&(operation.startsWith("knob frame ")||operation.startsWith("knob media_frame "))){
+                                final String frame=operation;handler.post(new Runnable(){public void run(){NativeWorker active=worker;if(!localMedia.active&&active!=null&&active.isRunning())active.send(frame);}});
+                            }
                             else if(operation!=null&&worker!=null&&(operation.startsWith("bind ")||operation.startsWith("knob ")||operation.startsWith("display ")||ready))worker.send(operation);
                         }
                     }
@@ -116,7 +127,18 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             if(!stopping)try{Thread.sleep(retry);retry=Math.min(retry*2,30000);}catch(InterruptedException e){Thread.currentThread().interrupt();break;}
         }
     }
-    private void publish(String suffix,String value,boolean retained){MqttSession session=mqtt;if(session==null||!mqttOnline)return;try{session.publish(config.mqttBase+suffix,value,retained);}catch(Exception e){session.close();}}
+    private void publish(final String suffix,final String value,final boolean retained){
+        final MqttSession session=mqtt;if(session==null||!mqttOnline)return;
+        if(Boolean.TRUE.equals(nativeCallback.get())||Thread.holdsLock(this)){
+            final long at=SystemClock.elapsedRealtime();
+            try{feedback.execute(new Runnable(){public void run(){
+                if(stopping||mqtt!=session||!mqttOnline||!retained&&SystemClock.elapsedRealtime()-at>1500)return;
+                try{session.publish(config.mqttBase+suffix,value,retained);}catch(Exception e){session.close();}
+            }});}catch(java.util.concurrent.RejectedExecutionException ignored){}
+            return;
+        }
+        try{session.publish(config.mqttBase+suffix,value,retained);}catch(Exception e){session.close();}
+    }
     private void dashboardState(){try{JSONObject ack=new JSONObject();ack.put("v",1);ack.put("url",store.dashboardSettings().dashboard);publish("/app/dashboard/state",ack.toString(),true);}catch(JSONException ignored){}}
     private void applyDashboard(String payload){
         try{JSONObject request=new JSONObject(payload);if(request.getInt("v")!=1)throw new IllegalArgumentException();
@@ -127,6 +149,56 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         NativeWorker active=worker;JSONObject current=state;if(current==null||active==null||!active.isRunning())return;publishState(current);
         int[][] copy=bindings;if(bindingsKnown)for(int b=0;b<4;b++)publish("/button/"+(b+1)+"/binding/state",copy[b][0]+","+copy[b][1],true);
         active.send("knob_status");active.send("audio_status");active.send("display status 0");active.send("management status 0");dashboardState();
+    }
+    private void loadLocalMedia(){
+        android.content.SharedPreferences prefs=getSharedPreferences("local_media_knob",0);
+        try{localMedia=new LocalMediaKnob(prefs.getBoolean("active",false),prefs.getInt("step",5),prefs.getString("entity",""),prefs.getString("title",""));}
+        catch(Exception ignored){localMedia=LocalMediaKnob.off();}
+    }
+    private void saveLocalMedia(LocalMediaKnob route){
+        getSharedPreferences("local_media_knob",0).edit().putBoolean("active",route.active).putInt("step",route.step).putString("entity",route.entity).putString("title",route.title).apply();
+    }
+    private void configureLocalMedia(String payload){
+        try{
+            if(payload.length()>1024)return;JSONObject data=new JSONObject(payload);
+            if(data.getInt("v")!=1)return;
+            final LocalMediaKnob next=new LocalMediaKnob(data.getBoolean("active"),data.getInt("step"),data.getString("entity"),data.getString("title"));
+            handler.post(new Runnable(){public void run(){
+                LocalMediaKnob old=localMedia;
+                if(old.active!=next.active||old.step!=next.step||!old.entity.equals(next.entity)||!old.title.equals(next.title)){localMedia=next;localFrameSent="";saveLocalMedia(next);}
+                drawLocalMedia();
+            }});
+        }catch(Exception ignored){}
+    }
+    private boolean localMediaEvent(final String event){
+        final LocalMediaKnob route=localMedia;
+        if(!route.active)return false;
+        // Navigation remains HA-owned. Keep the local route until HA actually
+        // selects another page, including when HA is offline or this is the only page.
+        if(event.equals("double_press"))return false;
+        final String action=route.action(event);final AudioEngine engine=audioEngine;
+        if(action==null||engine==null||!audioOnline||!config.selected.contains("audio"))return false;
+        final long at=SystemClock.elapsedRealtime();
+        handler.post(new Runnable(){public void run(){
+            if(!stopping&&localMedia==route&&audioEngine==engine&&config.selected.contains("knob_input")&&SystemClock.elapsedRealtime()-at<500)engine.knob(action,route.step);
+        }});
+        return true;
+    }
+    private void syncKnobMute(){
+        NativeWorker active=worker;JSONObject audio=audioState;
+        if(active==null||!active.isRunning()||audio==null||!config.selected.contains("knob_display"))return;
+        boolean muted=audio.optBoolean("muted",false);
+        if(active!=muteWorker||muteSent==null||muteSent.booleanValue()!=muted){
+            try{if(active.send(KnobTopics.encode("speaker_mute",muted?"ON":"OFF"))){muteWorker=active;muteSent=Boolean.valueOf(muted);}}catch(Exception ignored){}
+        }
+    }
+    private void drawLocalMedia(){
+        LocalMediaKnob route=localMedia;JSONObject audio=audioState;NativeWorker active=worker;
+        if(!route.active||audio==null||active==null||!active.isRunning()||config==null||!config.selected.contains("knob_display")||!config.selected.contains("audio"))return;
+        try{
+            String frame=KnobTopics.encode("media_frame",route.frame(audio.optDouble("volume",0),audio.optBoolean("muted",false),audio.optString("state","idle"),audio.optString("title",""))+"\n"+(audio.optBoolean("muted",false)?"ON":"OFF"));
+            if(active!=localFrameWorker||!frame.equals(localFrameSent))if(active.send(frame)){localFrameWorker=active;localFrameSent=frame;}
+        }catch(Exception ignored){}
     }
     private void audioCommand(final String raw){
         NativeWorker active=worker;if(raw.length()>4096||!config.selected.contains("audio")||active==null||!active.isRunning()||!audioOnline)return;
@@ -144,7 +216,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         if(!wanted){if(audioEngine!=null)stopAudio();return;}if(audioEngine!=null)return;
         final int generation=++audioGeneration;
         AudioEngine engine=new AudioEngine(this,new AudioEngine.Listener(){
-            public void state(JSONObject data){if(generation!=audioGeneration||stopping)return;audioState=data;audioOnline=true;}
+            public void state(JSONObject data){if(generation!=audioGeneration||stopping)return;audioState=data;audioOnline=true;syncKnobMute();drawLocalMedia();}
             public boolean hardware(String op){NativeWorker active=worker;
                 if(op.startsWith("audio power ")&&!config.selected.contains("amplifier"))return true;
                 return generation==audioGeneration&&!stopping&&active!=null&&active.isRunning()&&active.send(op);
@@ -174,7 +246,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             publish("/module/availability",online&&enabled?"online":"offline",true);
             publish("/knob/input/availability",value.getBoolean("knob_input_enabled")&&value.getBoolean("knob_input_ready")?"online":"offline",true);
             publish("/knob/display/availability",value.getBoolean("knob_display_enabled")&&value.getBoolean("knob_display_ready")?"online":"offline",true);
-            publish("/knob/controller/capabilities","{\"frames\":"+value.getBoolean("knob_display_enabled")+",\"local_buttons\":true,\"knob_input_enabled\":"+value.getBoolean("knob_input_enabled")+"}",true);
+            publish("/knob/controller/capabilities","{\"frames\":"+value.getBoolean("knob_display_enabled")+",\"local_buttons\":true,\"local_media\":true,\"media_icons\":true,\"knob_input_enabled\":"+value.getBoolean("knob_input_enabled")+"}",true);
             publish("/audio/amplifier/availability",value.optBoolean("audio_owned",false)&&config.selected.contains("amplifier")?"online":"offline",true);
             if(value.optBoolean("audio_owned",false))publish("/audio/owner","app",true);
             JSONArray relays=value.getJSONArray("relays");
@@ -182,6 +254,9 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         }catch(JSONException e){failed("Invalid native status");}
     }
     @Override public void message(JSONObject data){
+        nativeCallback.set(Boolean.TRUE);try{nativeMessage(data);}finally{nativeCallback.remove();}
+    }
+    private void nativeMessage(JSONObject data){
         if(stopping)return;
         try{
             String type=data.getString("type");
@@ -206,10 +281,11 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             }else if(type.equals("knob")){
                 NativeWorker active=worker;long age=SystemClock.elapsedRealtime()-data.getLong("at_ms");String event=data.getString("event");
                 if(active==null||!active.isRunning()||age<0||age>1500||!config.selected.contains("knob_input")||!event.matches("rotate_left|rotate_right|press|double_press|long_press"))return;
-                JSONObject payload=new JSONObject();payload.put("event_type",event);payload.put("steps",1);payload.put("key_code",data.getInt("key_code"));
+                boolean handled=localMediaEvent(event);
+                JSONObject payload=new JSONObject();payload.put("local_handled",handled);payload.put("event_type",event);payload.put("steps",1);payload.put("key_code",data.getInt("key_code"));
                 JSONObject current=state;if(current!=null&&current.optBoolean("knob_input_ready",false)){publish("/knob/event",payload.toString(),false);publish("/event",payload.toString(),false);}
             }else if(type.equals("knob_state")){
-                String topic=data.getString("topic");if(config.selected.contains("knob_display")&&topic.matches("/knob/(?:display/(?:availability|(?:title|value|detail|power|follow_main|activity|color|actual)/state)|led/color/state)"))publish(topic,data.getString("payload"),true);
+                String topic=data.getString("topic");if(config.selected.contains("knob_display")&&topic.matches("/knob/(?:display/(?:availability|(?:title|value|detail|power|follow_main|activity|ring|color|actual)/state)|led/color/state)"))publish(topic,data.getString("payload"),true);
             }else if(type.equals("management_state")){ManagementRuntime current=management;if(current!=null)current.backend(data);}
             else if(type.equals("display_state")){if(config.selected.contains("display"))publish("/display/state",data.getJSONObject("data").toString(),true);}
             else if(type.equals("audio_level")){if(config.selected.contains("amplifier")){int value=data.getInt("value");if(value>=0&&value<=100)publish("/audio/hardware_level/state",Integer.toString(value),true);}}
@@ -250,6 +326,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         handler.postDelayed(new Runnable(){public void run(){startWorker();}},retryDelay);retryDelay=ActivationPolicy.nextRetry(retryDelay);
     }}});}
     @Override public void onDestroy(){
+        feedback.shutdownNow();
         NetworkRouter.get(this).remove(networkChanges);if(instance==this)instance=null;
         stopping=true;handler.removeCallbacksAndMessages(null);MqttSession session=mqtt;mqtt=null;if(session!=null)session.close();
         if(transportDeadline!=null)transportDeadline.cancel();

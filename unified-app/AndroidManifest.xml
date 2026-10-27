@@ -1,15 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.wallpanel.app" android:versionCode="31" android:versionName="0.17.0">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.wallpanel.app" android:versionCode="43" android:versionName="0.23.0">
   <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="28" />
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
   <uses-permission android:name="android.permission.WAKE_LOCK" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+  <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+  <uses-permission android:name="android.permission.BLUETOOTH" />
+  <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
   <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-  <application android:label="Tuya HA Wall Panel" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+  <application android:name=".WallPanelApplication" android:extractNativeLibs="true" android:label="Tuya HA Wall Panel" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+    <service android:name="com.wallpanel.audioreceiver.ReceiverService" android:exported="false" />
+    <activity android:name=".ReceiverSettingsActivity" android:exported="false" />
+    <service android:name=".ExternalAppService" android:exported="false" />
     <service android:name=".BridgeService" android:exported="false" />
     <service android:name=".SipService" android:exported="false" />
     <activity android:name=".NetworkSettingsActivity" android:exported="false" />

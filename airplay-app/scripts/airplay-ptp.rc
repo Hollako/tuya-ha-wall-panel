@@ -1,0 +1,10 @@
+# Independent AirPlay service; existing wallpanel_privilege is not changed.
+service wpar_airplay_ptp /system/bin/sh /data/local/wpar-airplay/start-helper.sh
+    class late_start
+    user root
+    group root inet
+    seclabel u:r:su:s0
+    disabled
+
+on property:sys.boot_completed=1
+    start wpar_airplay_ptp

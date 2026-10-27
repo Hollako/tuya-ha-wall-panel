@@ -1,0 +1,11 @@
+# Audio Receiver only: fixed one-shot launch of its unprivileged boot service.
+# BootStartService checks saved enable/autostart switches and waits for unlock.
+service wpar_audio_launch /system/bin/am start-foreground-service -n com.wallpanel.audioreceiver/.BootStartService
+    class late_start
+    user root
+    group root
+    disabled
+    oneshot
+
+on property:sys.boot_completed=1
+    start wpar_audio_launch

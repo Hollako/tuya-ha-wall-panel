@@ -4,30 +4,27 @@
     "step": {
       "user": {
         "title": "Set up your Wall Panel",
-        "description": "Double press: next entity. Hold: entity selection menu. In the menu, rotate to highlight, press to select, hold to cancel. Buttons, relays, audio and displays belong to this integration; MQTT is the local transport.",
+        "description": "Double press: next entity. Hold: selection menu, except on media pages where hold plays/pauses and press toggles mute. In the menu, rotate to highlight, press to select, hold to cancel. Buttons, relays, audio and displays belong to this integration; MQTT is the local transport.",
         "data": {
           "name": "Wall Panel name",
           "mqtt_base": "Panel MQTT base topic",
-          "entities": "Entities to control or display (in selected order)",
+          "entities": "Entities to control (in selected order)",
           "brightness_step": "Light brightness per click (%)",
           "cover_step": "Cover position per click (%)",
           "volume_step": "Media volume per click (%)",
           "temperature_step": "Temperature per click (0 uses the entity's step)",
           "menu_timeout": "Selection menu timeout (seconds)",
-          "auto_led": "Automatically show white for available / red for unavailable",
-          "include_clock": "Include Clock page",
-          "clock_format": "Clock format"
+          "auto_led": "Automatically show white for available / red for unavailable"
         },
         "data_description": {
-          "entities": "Choose any number of Climate, Weather, Light, Cover and Media Player entities. Media pages rotate volume; press plays/pauses where supported, otherwise toggles mute where available.",
-          "include_clock": "Adds a read-only time/date page using Home Assistant's time zone. Clock appears after the chosen entities.",
+          "entities": "Choose Climate, Light, Cover and Media Player entities. Media: rotate volume, press mute, hold play/pause, double press next page. The panel Audio entity uses direct local control with HA feedback; other players use HA. Time, date and weather appear on the idle screensaver.",
           "temperature_step": "Set 0 to use the thermostat's own temperature step."
         }
       }
     },
     "error": {
       "invalid_topic": "Enter a valid MQTT base topic without wildcards.",
-      "invalid_entities": "Choose only Climate, Weather, Light, Cover or Media Player entities."
+      "invalid_entities": "Choose Climate, Light, Cover or Media Player entities."
     },
     "abort": {
       "already_configured": "This panel already has a controller. Use Configure to change its entity list."
@@ -38,29 +35,27 @@
       "init": {
         "title": "Configure your panel",
         "menu_options": {
-          "entities": "Entities, Weather and Clock",
+          "entities": "Knob controls",
           "buttons": "Button assignments and scenes",
           "order": "Page order",
-          "dashboard": "Dashboard URL"
+          "dashboard": "Dashboard URL",
+          "screensaver": "Knob screensaver"
         }
       },
       "entities": {
         "title": "Choose knob entities and behavior",
         "description": "Add or remove entities here. They are not fixed in code. Use Page order to arrange the selection menu.",
         "data": {
-          "entities": "Entities to control or display (in selected order)",
+          "entities": "Entities to control (in selected order)",
           "brightness_step": "Light brightness per click (%)",
           "cover_step": "Cover position per click (%)",
           "volume_step": "Media volume per click (%)",
           "temperature_step": "Temperature per click (0 uses the entity's step)",
           "menu_timeout": "Selection menu timeout (seconds)",
-          "auto_led": "Automatically show white for available / red for unavailable",
-          "include_clock": "Include Clock page",
-          "clock_format": "Clock format"
+          "auto_led": "Automatically show white for available / red for unavailable"
         },
         "data_description": {
-          "entities": "Choose any number of Climate, Weather, Light, Cover and Media Player entities. Media pages rotate volume; press plays/pauses where supported, otherwise toggles mute where available.",
-          "include_clock": "Adds a read-only time/date page using Home Assistant's time zone. Clock appears after the chosen entities.",
+          "entities": "Choose Climate, Light, Cover and Media Player entities. Media: rotate volume, press mute, hold play/pause, double press next page. The panel Audio entity uses direct local control with HA feedback; other players use HA. Time, date and weather appear on the idle screensaver.",
           "temperature_step": "Set 0 to use the thermostat's own temperature step."
         }
       },
@@ -94,13 +89,22 @@
         "data": {
           "dashboard_url": "Dashboard URL (HTTP/HTTPS, up to 255 characters)"
         }
+      },
+      "screensaver": {
+        "title": "Knob screensaver",
+        "description": "After 15 seconds without knob input, show time, date and weather. Using the knob returns to its controls immediately. The LED is red while idle and white during use. Enable Knob activity mode for automatic switching. Turning the screensaver off restores the 15-second LCD-off behavior. Weather is optional; without it, the clock and date still work.",
+        "data": {
+          "screensaver_enabled": "Show screensaver while idle",
+          "screensaver_weather": "Weather entity",
+          "clock_format": "Clock format"
+        }
       }
     },
     "abort": {
-      "no_pages": "Enable Clock or choose entities before arranging pages."
+      "no_pages": "Choose control entities before arranging pages."
     },
     "error": {
-      "invalid_entities": "Choose only Climate, Weather, Light, Cover or Media Player entities.",
+      "invalid_entities": "Choose Climate, Light, Cover or Media Player entities.",
       "invalid_actions": "Choose at least one valid HA action for each Run HA actions assignment.",
       "invalid_dashboard_url": "Enter an HTTP/HTTPS URL up to 255 characters, without spaces or embedded credentials. Leave blank to clear."
     }

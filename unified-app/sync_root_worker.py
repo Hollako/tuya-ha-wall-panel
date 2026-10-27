@@ -6,9 +6,18 @@ def sync(adb,device,binary):
     binary=Path(binary);expected=hashlib.sha256(binary.read_bytes()).hexdigest()
     target='/data/local/wallpanel/wallpanel-core'
     def run(*args):
-        p=subprocess.run([str(adb),'-s',device,*args],capture_output=True,timeout=30)
-        if p.returncode:raise RuntimeError('ADB operation failed: '+args[0])
-        return p.stdout.decode().strip()
+        readonly=len(args)>1 and args[0]=='shell' and args[1] in ('id','cat','readlink','sha256sum')
+        for attempt in range(3 if readonly else 1):
+            try:
+                p=subprocess.run([str(adb),'-s',device,*args],capture_output=True,timeout=120 if args[0]=='push' else 30)
+                if not p.returncode:return p.stdout.decode().strip()
+            except subprocess.TimeoutExpired:
+                if not readonly:raise
+            if readonly and attempt<2:
+                subprocess.run([str(adb),'disconnect',device],capture_output=True,timeout=30)
+                subprocess.run([str(adb),'connect',device],capture_output=True,timeout=40)
+                time.sleep(1)
+            else:raise RuntimeError('ADB operation failed: '+args[0])
     def status():return json.loads(run('shell','cat','/dev/wallpanel-app-status.json'))
     def running(data):
         pid=str(data.get('worker_pid',0))

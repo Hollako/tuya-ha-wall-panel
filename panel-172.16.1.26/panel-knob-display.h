@@ -14,6 +14,9 @@ static int knob_fb=-1,knob_ready,knob_dirty=1,knob_report=1,knob_physical=-1;
 static long long knob_check_at;
 static struct fb_var_screeninfo knob_var;
 static uint16_t knob_pixels[240*240];
+#ifndef WP_KNOB_RING_VISIBLE
+#define WP_KNOB_RING_VISIBLE() 1
+#endif
 #ifndef WP_KNOB_EFFECTIVE_POWER
 #define WP_KNOB_EFFECTIVE_POWER() (knob_power&&(!knob_follow||knob_main_awake()))
 #endif
@@ -90,10 +93,23 @@ static int knob_main_awake(void) {
 static int knob_render(void) {
     memset(knob_pixels,0,sizeof(knob_pixels));
     unsigned int accent=knob_rgb[knob_color];
-    for(int y=0;y<240;y++)for(int x=0;x<240;x++){int r=(x-120)*(x-120)+(y-120)*(y-120);if(r>=114*114&&r<=116*116)knob_pixel(x,y,accent,255);}
+    if(WP_KNOB_RING_VISIBLE())for(int y=0;y<240;y++)for(int x=0;x<240;x++){int r=(x-120)*(x-120)+(y-120)*(y-120);if(r>=114*114&&r<=116*116)knob_pixel(x,y,accent,255);}
+#ifdef WP_KNOB_DRAW_SCREENSAVER
+    if(!WP_KNOB_DRAW_SCREENSAVER()){
+#endif
     knob_line(knob_text[0],69,24,180,accent);
     knob_line(knob_text[1],143,56,208,0xffffff);
+#ifdef WP_KNOB_DRAW_DETAIL
+    WP_KNOB_DRAW_DETAIL();
+#else
     knob_line(knob_text[2],188,22,180,0xb8c8d0);
+#endif
+#ifdef WP_KNOB_DRAW_SCREENSAVER
+    }
+#endif
+#ifdef WP_KNOB_DRAW_OVERLAY
+    WP_KNOB_DRAW_OVERLAY();
+#endif
     size_t at=0;if(lseek(knob_fb,0,SEEK_SET)<0)return -1;
     while(at<sizeof(knob_pixels)){ssize_t n=write(knob_fb,(char *)knob_pixels+at,sizeof(knob_pixels)-at);if(n<=0)return -1;at+=n;}
     knob_dirty=0;return 0;

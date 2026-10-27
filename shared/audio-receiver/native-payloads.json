@@ -1,0 +1,34 @@
+{
+  "v": 1,
+  "engine": "shairport-sync-5.6.1+nqptp-1.2.9",
+  "abis": {
+    "arm64-v8a": {
+      "shairport-sync": {
+        "path": "airplay-app/build/native/shairport-sync",
+        "sha256": "cb9d261ed041b3386e366a6ae56db68a854134f50c70b650c5c8e0d7982534fb"
+      },
+      "nqptp": {
+        "path": "airplay-app/build/native/nqptp",
+        "sha256": "d46c04f0364abd5cd51bc0b1657c67b0d8cc175fe3244f8524c5ca30802aee18"
+      },
+      "wpar-ptp-helper": {
+        "path": "airplay-app/build/native/wpar-ptp-helper",
+        "sha256": "ef5351494ebf7a529f982fe713e6dfe64ac6b4834a9fe18d2bdc9ebf0977da9e"
+      }
+    },
+    "armeabi-v7a": {
+      "shairport-sync": {
+        "path": "airplay-app/build/native/armeabi-v7a/shairport-sync",
+        "sha256": "2e6cc60738fbab6d035fa538819284a3c9fdbd04bb144612bb0848a8a21d01d2"
+      },
+      "nqptp": {
+        "path": "airplay-app/build/native/armeabi-v7a/nqptp",
+        "sha256": "f21f68bfb25308900a6ec1a959701503e74a9701d89af27e8c874de6839fe080"
+      },
+      "wpar-ptp-helper": {
+        "path": "airplay-app/build/native/armeabi-v7a/wpar-ptp-helper",
+        "sha256": "e35ed38c95f3b28c5eb739e3deb9b0a75b1a6c9e77c6c6c41a57b042edb8b265"
+      }
+    }
+  }
+}

@@ -39,7 +39,9 @@ class PanelAudio:
         try:
             data=json.loads(message.payload)
             if not isinstance(data,dict) or data.get("state") not in ("off","idle","playing","paused","buffering"):return
-            if data.get("source") not in ("Android playback","Line Input"):return
+            if data.get("source") not in ("Android playback","Line Input","AirPlay"):return
+            sources=data.get("sources")
+            if sources is not None and (not isinstance(sources,list) or not 1<=len(sources)<=3 or any(source not in ("Android playback","Line Input","AirPlay") for source in sources) or len(set(sources))!=len(sources)):return
             volume=data.get("volume")
             if isinstance(volume,bool) or not isinstance(volume,(int,float)) or not math.isfinite(volume) or not 0<=volume<=1:return
             if not isinstance(data.get("muted"),bool):return
@@ -70,6 +72,11 @@ class PanelAudio:
     async def command(self,command,**values):
         if not self.online or not self.controller.online:raise HomeAssistantError("Tuya Wall Panel audio is offline")
         projected={};request_id=None
+        if command in ("receiver_delay","receiver_trim"):
+            value=values.get("value");minimum,maximum=(-500,500) if command=="receiver_delay" else (0,100)
+            if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or value!=int(value) or not minimum<=value<=maximum:
+                raise HomeAssistantError("Invalid AirPlay timing or trim")
+        elif command=="receiver_enabled" and not isinstance(values.get("value"),bool):raise HomeAssistantError("AirPlay receiver requires true or false")
         if command=="volume":
             value=values.get("value")
             if isinstance(value,bool) or not isinstance(value,(int,float)) or not math.isfinite(value) or not 0<=value<=1:

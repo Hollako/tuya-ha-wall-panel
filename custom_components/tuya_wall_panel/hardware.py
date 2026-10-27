@@ -28,19 +28,21 @@ SPECS = (
     HardwareSpec("switch","knob_display_power","Knob display","/knob/display/power"),
     HardwareSpec("switch","knob_display_follow_main","Knob display follow main screen","/knob/display/follow_main"),
     HardwareSpec("switch","knob_activity_mode","Knob activity mode","/knob/display/activity",icon="mdi:timer-outline"),
+    HardwareSpec("switch","knob_display_ring","Knob edge circle","/knob/display/ring",icon="mdi:circle-outline"),
     HardwareSpec("select","knob_display_color","Knob display accent color","/knob/display/color",options=("Cyan","White","Red","Green","Blue","Amber","Purple"),icon="mdi:palette"),
     HardwareSpec("select","knob_led_color","Knob LED color","/knob/led/color",options=("Red","White"),icon="mdi:led-on"),
     HardwareSpec("number","audio_hardware_level","Audio hardware output level","/audio/hardware_level","amplifier",maximum=100,icon="mdi:amplifier"),
 )
 EVENTS = {"knob": ("rotate_left","rotate_right","press","double_press","long_press"),
           **{f"button_{i}": ("press","double_press") for i in range(1,5)}}
-LEGACY_ENTITIES = tuple((s.domain,s.key) for s in SPECS if s.key!="knob_activity_mode") + (("switch","audio_external_speakers"),) + tuple(("event",k) for k in EVENTS)
+LEGACY_ENTITIES = tuple((s.domain,s.key) for s in SPECS if s.key not in ("knob_activity_mode","knob_display_ring")) + (("switch","audio_external_speakers"),) + tuple(("event",k) for k in EVENTS)
 
 def event_path(key):
     return "/knob/event" if key=="knob" else f"/button/{key[-1]}/event"
 
 class PanelHardware:
     def __init__(self,controller):
+        self.local_media_supported=False;self.media_icons_supported=False
         self.controller=controller;self.values={};self.module_online=False;self.display_online=False
         self.buttons_enabled=True;self.relays_enabled=True
         self.knob_input_online=True # Legacy bridge predates the dedicated availability topic.
@@ -48,7 +50,7 @@ class PanelHardware:
         self._unsubs=[];self._events={key:set() for key in EVENTS}
 
     async def start(self):
-        for suffix in ("/module/availability","/module/capabilities","/knob/display/availability","/knob/input/availability","/audio/amplifier/availability",*(s.path+"/state" for s in SPECS)):
+        for suffix in ("/knob/controller/capabilities","/module/availability","/module/capabilities","/knob/display/availability","/knob/input/availability","/audio/amplifier/availability",*(s.path+"/state" for s in SPECS)):
             self._unsubs.append(await mqtt.async_subscribe(self.controller.hass,self.controller.base+suffix,self._state,1))
         for key in EVENTS:
             self._unsubs.append(await mqtt.async_subscribe(self.controller.hass,self.controller.base+event_path(key),self._event,1))
@@ -66,7 +68,15 @@ class PanelHardware:
     @callback
     def _state(self,message):
         path=message.topic[len(self.controller.base):]
-        if path=="/module/availability":self.module_online=message.payload=="online"
+        if path=="/knob/controller/capabilities":
+            try:data=json.loads(message.payload)
+            except (ValueError,TypeError):return
+            if not isinstance(data,dict):return
+            self.local_media_supported=data.get("local_media") is True
+            self.media_icons_supported=data.get("media_icons") is True
+            self.controller._sent=None
+            self.controller._local_route_sent=None;self.controller.spawn(self.controller.render())
+        elif path=="/module/availability":self.module_online=message.payload=="online"
         elif path=="/module/capabilities":
             try:data=json.loads(message.payload)
             except (ValueError,TypeError):return

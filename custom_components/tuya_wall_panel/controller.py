@@ -13,7 +13,7 @@ from homeassistant.helpers.script import Script,async_validate_actions_config
 from homeassistant.helpers import config_validation as cv
 from homeassistant.util import dt as dt_util
 from .const import DEFAULTS, DOMAIN
-from .model import Menu, adjust, press, summary, display_text
+from .model import Menu, adjust, press, summary, display_text, media_hold
 from .audio import PanelAudio
 from .device import PanelDevice
 from .hardware import PanelHardware
@@ -27,8 +27,10 @@ class KnobController:
         self.hass,self.entry=hass,entry
         self.options={**DEFAULTS,**entry.data,**entry.options}
         self.base=entry.data["mqtt_base"]
-        self.targets=list(dict.fromkeys(self.options["entities"]))
-        if self.options["include_clock"]:self.targets.append(CLOCK)
+        self.targets=list(dict.fromkeys(e for e in self.options["entities"] if e.partition(".")[0] in ("light","cover","climate","media_player")))
+        self._saver_weather=self.options["screensaver_weather"] if "screensaver_weather" in entry.options or "screensaver_weather" in entry.data else next((e for e in self.options["entities"] if e.startswith("weather.")),"")
+        self._saver_sent=None;self._saver_minute=None
+        self._local_route_sent=None
         order=self.options["page_order"]
         self.targets=[e for e in order if e in self.targets]+[e for e in self.targets if e not in order]
         self.menu=Menu(self.targets)
@@ -71,8 +73,9 @@ class KnobController:
             self._unsubs.append(await mqtt.async_subscribe(self.hass,topic,handler,1))
         for button in range(1,5):
             self._unsubs.append(await mqtt.async_subscribe(self.hass,self.base+f"/button/{button}/event",self._mqtt_button,1))
-        if self.options["entities"]:
-            self._unsubs.append(async_track_state_change_event(self.hass,self.options["entities"],self._state_changed))
+        watched=list(dict.fromkeys(self.targets+([self._saver_weather] if self._saver_weather else [])))
+        if watched:
+            self._unsubs.append(async_track_state_change_event(self.hass,watched,self._state_changed))
         self._unsubs.append(async_track_time_interval(self.hass,self._tick,timedelta(seconds=1)))
 
     async def stop(self):
@@ -111,7 +114,7 @@ class KnobController:
         if not self.online:
             self._pending.clear();self._projected.clear()
             if self._dispatch_task:self._dispatch_task.cancel();self._dispatch_task=None
-        self._sent=None;self._led=None;self.notify()
+        self._sent=None;self._led=None;self._saver_sent=None;self._local_route_sent=None;self.notify()
         if self.online:self.spawn(self._online_setup())
 
     async def _online_setup(self):
@@ -126,6 +129,7 @@ class KnobController:
             mapping={"relay1":"1","relay2":"2"}
             payload=",".join(mapping.get(settings.get(g),"0") for g in ("press","double_press"))
             await mqtt.async_publish(self.hass,self.base+f"/button/{button}/binding/set",payload,qos=1,retain=False)
+        await self.render_screensaver()
         await self.render()
 
     @callback
@@ -148,7 +152,9 @@ class KnobController:
                 await script.async_run({"button":int(button),"gesture":event,"selected_entity":self.menu.active},context=Context())
             return
         if mode=="next":await self.gesture("double_press")
-        elif mode=="menu":await self.gesture("long_press")
+        elif mode=="menu" and self.enabled:
+            async with self._lock:
+                self.menu.toggle();self._menu_at=time.monotonic();self.notify();await self.render()
         elif mode=="confirm" and self.menu.cursor is not None:await self.gesture("press")
         elif mode=="previous" and self.enabled:
             if self.targets:await self.select(self.targets[(self.menu.selected-1)%len(self.targets)])
@@ -160,6 +166,7 @@ class KnobController:
             data=json.loads(message.payload)
             if not isinstance(data,dict):return
             event=data.get("event_type")
+            if data.get("local_handled") is True and event in ("rotate_left","rotate_right","press","long_press"):return
             if event not in ("rotate_left","rotate_right","press","double_press","long_press"):return
         except (ValueError,TypeError):return
         self.spawn(self.gesture(event))
@@ -170,11 +177,14 @@ class KnobController:
         if state and eid.startswith("climate.") and state.state not in ("off","unavailable","unknown"):
             self._previous_modes[eid]=state.state;self.save()
         if eid==self.menu.active:self.spawn(self.render())
+        if eid==self._saver_weather:self.spawn(self.render_screensaver())
 
     @callback
     def _tick(self,now):
         self.audio.tick()
         self.device.tick()
+        if self._saver_minute!=dt_util.now().strftime("%Y%m%d%H%M%z"):
+            self.spawn(self.render_screensaver())
         refresh=False
         if self.menu.cursor is not None and time.monotonic()-self._menu_at>=self.options["menu_timeout"]:
             self.menu.cursor=None;self.notify();refresh=True
@@ -190,7 +200,7 @@ class KnobController:
         self.enabled=value;self.menu.cursor=None;self._pending.clear();self._projected.clear()
         if self._dispatch_task:self._dispatch_task.cancel();self._dispatch_task=None
         self.save();self.notify()
-        if value:self._sent=None;await self.render()
+        self._sent=None;await self.render()
 
     async def select(self,entity_id):
         if entity_id not in self.targets:return
@@ -201,7 +211,13 @@ class KnobController:
         async with self._lock:
             if not self.enabled or not self.online:return
             self.error=None
-            if event=="long_press":
+            if event=="long_press" and self.menu.cursor is None and (self.menu.active or "").startswith("media_player."):
+                await self._flush()
+                state=self.hass.states.get(self.menu.active)
+                command=media_hold(self.menu.active,state.state,state.attributes) if state else None
+                if command:await self._execute(command)
+                else:self.error="Play/pause not supported"
+            elif event=="long_press":
                 self.menu.toggle();self._menu_at=time.monotonic()
             elif self.menu.cursor is not None:
                 self._menu_at=time.monotonic()
@@ -309,9 +325,45 @@ class KnobController:
         names=[self.name(e) for e in self.targets]
         return [f"{i+1}. {name}" for i,name in enumerate(names)]
 
+    def _is_local_media(self,eid):
+        if not eid:return False
+        from homeassistant.helpers import entity_registry as er
+        registry=er.async_get(self.hass)
+        return registry.async_get_entity_id("media_player",DOMAIN,self.entry.entry_id+"_audio_player")==eid
+
+    async def _route_local_media(self):
+        if not self.hardware.local_media_supported:return
+        active=self.enabled and self.menu.cursor is None and self._is_local_media(self.menu.active)
+        payload=json.dumps({"v":1,"active":active,"step":int(self.options["volume_step"]),
+            "entity":self.menu.active if active else "","title":f"{self.menu.selected+1}/{len(self.targets)} {self.name(self.menu.active)}" if active else ""},separators=(",",":"))
+        if payload!=self._local_route_sent:
+            await mqtt.async_publish(self.hass,self.base+"/knob/media/set",payload,qos=1,retain=False)
+            self._local_route_sent=payload
+
+    async def render_screensaver(self):
+        if not self.online or self._closed:return
+        now=dt_util.now()
+        if not self.options["screensaver_enabled"]:payload="OFF"
+        else:
+            state=self.hass.states.get(self._saver_weather)
+            condition=state.state if state and state.state not in ("unknown","unavailable") else "unavailable"
+            known={"sunny","clear-night","partlycloudy","cloudy","fog","rainy","pouring","snowy","snowy-rainy","hail","lightning","lightning-rainy","windy","windy-variant","exceptional"}
+            if condition not in known:condition="unavailable"
+            temperature="--"
+            if state and condition!="unavailable":
+                value=state.attributes.get("temperature")
+                if value is not None:temperature=display_text(str(value)+str(state.attributes.get("temperature_unit",self.hass.config.units.temperature_unit)),16)
+            payload="\n".join((str(int(now.utcoffset().total_seconds())),self.options["clock_format"],condition,temperature))
+        if payload!=self._saver_sent:
+            await mqtt.async_publish(self.hass,self.base+"/knob/display/screensaver/set",payload,qos=1,retain=False)
+            self._saver_sent=payload
+        self._saver_minute=now.strftime("%Y%m%d%H%M%z")
+
     async def render(self):
-        if not self.enabled or not self.online or self._closed:return
+        if not self.online or self._closed:return
         async with self._render_lock:
+            await self._route_local_media()
+            if not self.enabled:return
             eid=self.menu.active
             unavailable=False
             if self.menu.cursor is not None:
@@ -353,10 +405,15 @@ class KnobController:
                             detail=when+" / "+str(item.get("condition","Forecast")).replace("-"," ")
             if self.error:detail=self.error
             frame="\n".join([display_text(title,32),display_text(value,16),display_text(detail,32)])
-            if frame!=self._sent:
+            kind="frame"
+            if self.hardware.media_icons_supported and self.menu.cursor is None and eid and eid.startswith("media_player."):
+                state=self.hass.states.get(eid)
+                frame+="\n"+("ON" if state and state.state not in ("unknown","unavailable") and state.attributes.get("is_volume_muted") is True else "OFF")
+                kind="media_frame"
+            if (kind,frame)!=self._sent:
                 try:
-                    await mqtt.async_publish(self.hass,self.base+"/knob/display/frame/set",frame,qos=1,retain=False)
-                    self._sent=frame
+                    await mqtt.async_publish(self.hass,self.base+"/knob/display/"+kind+"/set",frame,qos=1,retain=False)
+                    self._sent=(kind,frame)
                 except HomeAssistantError:
                     self._sent=None;return
             if self.options["auto_led"] and self.hardware.values.get("knob_activity_mode")!="ON":

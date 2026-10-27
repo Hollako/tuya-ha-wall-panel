@@ -12,7 +12,7 @@ public final class ModuleCatalog {
         }
     }
     public static final Module[] ALL={
-        new Module("dashboard","Dashboard",false,true),
+        new Module("dashboard","Dashboard / app",false,true),
         new Module("display","Main display and backlight",true,true),
         new Module("knob_input","Knob input",true,true),
         new Module("knob_display","Knob display",true,true),

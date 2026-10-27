@@ -47,7 +47,7 @@ class HardwareTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(call.args[2],'');self.assertTrue(call.kwargs['retain'])
     async def test_subscribing_only_listens_and_sends_no_commands(self):
         await self.c.hardware.start()
-        self.assertEqual(t.mqtt.async_subscribe.await_count,21)
+        self.assertEqual(t.mqtt.async_subscribe.await_count,6+len(hardware.SPECS)+len(hardware.EVENTS))
         t.mqtt.async_publish.assert_not_awaited()
     async def test_state_validation_and_availability_are_independent(self):
         self.report('/relay/1/state','ON');self.assertEqual(self.c.hardware.values['relay_1'],'ON')

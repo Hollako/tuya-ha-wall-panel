@@ -1,5 +1,6 @@
 """Production ringtone/video lifecycle against fake Android APIs; no sound/camera playback."""
 from pathlib import Path
+from engine_sources import sip_source
 import subprocess,tempfile,zipfile,json,wave
 r=Path(__file__).resolve().parent
 sources={
@@ -38,7 +39,7 @@ with tempfile.TemporaryDirectory(dir=r/'test-classes',prefix='sip-presentation-'
  for name,body in sources.items():
   p=temp/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(body);files.append(p)
  java=r'C:\Program Files (x86)\Java\jre1.8.0_431\bin\java.exe';out=temp/'classes';out.mkdir();src=r/'src/local/wallpanel/app'
- subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),*[str(src/n) for n in ('SipConfig.java','SipRinger.java','IntercomVideo.java','AvcSurfaceDecoder.java')],*[str(p) for p in files]],check=True)
+ subprocess.run([java,'-jar',str(r.parent/'audio/tooling/ecj.jar'),'-encoding','UTF-8','-1.7','-nowarn','-d',str(out),*[str(sip_source(n)) for n in ('SipConfig.java','SipRinger.java','IntercomVideo.java','AvcSurfaceDecoder.java')],*[str(p) for p in files]],check=True)
  subprocess.run([java,'-cp',str(out),'local.wallpanel.app.PresentationTests'],check=True,timeout=10)
 with wave.open(str(r/'assets/intercom-chime.wav')) as w:
  assert w.getnchannels()==1 and w.getsampwidth()==2 and w.getframerate()==16000 and w.getnframes()==48000

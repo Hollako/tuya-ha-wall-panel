@@ -14,6 +14,7 @@ public final class SystemUiLease {
     }
     private static void hold()throws Exception {
         if(android.os.Process.myUid()!=0)throw new SecurityException("Root required");
+        AppTaskGuard.restoreStale();
         final IBinder token=new Binder();
         IBinder binder=(IBinder)Class.forName("android.os.ServiceManager").getMethod("getService",String.class).invoke(null,"statusbar");
         if(binder==null)throw new IOException("Status bar unavailable");
@@ -21,15 +22,23 @@ public final class SystemUiLease {
         Object service=Class.forName("com.android.internal.statusbar.IStatusBarService$Stub").getMethod("asInterface",IBinder.class).invoke(null,binder);
         Method disable=api.getMethod("disable",int.class,IBinder.class,String.class);
         Method disable2=api.getMethod("disable2",int.class,IBinder.class,String.class);
+        AppTaskGuard app=null;
         try {
             disable.invoke(service,PRIMARY,token,OWNER);
             disable2.invoke(service,SECONDARY,token,OWNER);
             api.getMethod("collapsePanels").invoke(service);
-            System.out.println("{\"v\":1,\"type\":\"ui_guard\",\"ready\":true}");System.out.flush();
-            InputStream input=new FileInputStream(FileDescriptor.in);
-            while(input.read()!=-1){} // EOF releases the token; no commands are accepted.
+            System.out.println("{\"v\":1,\"type\":\"ui_guard\",\"ready\":true,\"app_guard\":true}");System.out.flush();
+            BufferedReader input=new BufferedReader(new InputStreamReader(new FileInputStream(FileDescriptor.in),"US-ASCII"));
+            String line;
+            while((line=input.readLine())!=null){
+                if(line.length()>200||!line.startsWith("APP ")||app!=null)throw new IOException("Invalid app policy request");
+                app=new AppTaskGuard(line.substring(4));app.start();
+                System.out.println("{\"v\":1,\"ready\":true,\"app_guard\":true}");System.out.flush();
+            }
         } finally {
-            try{disable2.invoke(service,0,token,OWNER);}finally{disable.invoke(service,0,token,OWNER);}
+            try{if(app!=null)app.close();}finally{
+                try{disable2.invoke(service,0,token,OWNER);}finally{disable.invoke(service,0,token,OWNER);}
+            }
         }
     }
 }

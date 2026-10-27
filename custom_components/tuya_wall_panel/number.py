@@ -5,7 +5,24 @@ from .hardware import HardwareEntity,SPECS
 from .entity import KnobEntity
 
 async def async_setup_entry(hass,entry,async_add_entities):
-    async_add_entities([HardwareLevel(entry.runtime_data,s) for s in SPECS if s.domain=="number"]+[DisplaySetting(entry.runtime_data,key,name) for key,name in (("dim_after","Dim after"),("off_after","Display off after"),("dim_brightness","Dim brightness"))])
+    async_add_entities([HardwareLevel(entry.runtime_data,s) for s in SPECS if s.domain=="number"]+[DisplaySetting(entry.runtime_data,key,name) for key,name in (("dim_after","Dim after"),("off_after","Display off after"),("dim_brightness","Dim brightness"))]+[ReceiverSetting(entry.runtime_data,key,name) for key,name in (("receiver_delay","AirPlay timing offset"),("receiver_trim","AirPlay trim"))])
+
+class ReceiverSetting(KnobEntity,NumberEntity):
+    _attr_mode=NumberMode.BOX
+    _attr_entity_category=EntityCategory.CONFIG
+    _attr_icon="mdi:cast-audio"
+    def __init__(self,controller,key,name):
+        super().__init__(controller,key);self.key=key;self._attr_name=name
+        delay=key=="receiver_delay"
+        self._attr_native_min_value=-500 if delay else 0
+        self._attr_native_max_value=500 if delay else 100
+        self._attr_native_step=5 if delay else 1
+        self._attr_native_unit_of_measurement="ms" if delay else "%"
+    @property
+    def available(self):return self.controller.online and self.controller.audio.online and self.controller.audio.data.get("receiver_supported") is True
+    @property
+    def native_value(self):return self.controller.audio.data.get(self.key)
+    async def async_set_native_value(self,value):await self.controller.audio.command(self.key,value=value)
 
 class HardwareLevel(HardwareEntity,NumberEntity):
     _attr_native_min_value=0

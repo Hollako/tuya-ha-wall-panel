@@ -27,6 +27,8 @@ public final class AppRestartReceiver extends BroadcastReceiver {
                 // No STOP_HARDWARE action: preserve the user's saved enabled setting.
                 context.stopService(new Intent(context,BridgeService.class));
                 context.stopService(new Intent(context,SipService.class));
+                context.stopService(new Intent(context,ExternalAppService.class));
+                context.stopService(new Intent(context,com.wallpanel.audioreceiver.ReceiverService.class));
                 new Handler(Looper.getMainLooper()).postDelayed(new Runnable(){public void run(){android.os.Process.killProcess(android.os.Process.myPid());}},1000);
             }catch(Exception failed){pending=false;new ConfigStore(context).runtimeStatus("App restart unavailable; try again");}
         }});

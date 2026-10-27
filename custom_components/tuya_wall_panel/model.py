@@ -104,10 +104,6 @@ def press(entity_id, state, attrs, previous_mode=None):
         return None
     if domain == "media_player":
         features = int(attrs.get("supported_features", 0))
-        if state == "playing" and features & 1:
-            return Command(domain, "media_pause", {"entity_id": entity_id})
-        if state in ("paused", "idle", "on") and features & 16384:
-            return Command(domain, "media_play", {"entity_id": entity_id})
         if features & 8 and isinstance(attrs.get("is_volume_muted"), bool):
             return Command(domain, "volume_mute", {"entity_id": entity_id, "is_volume_muted": not attrs["is_volume_muted"]})
         return None
@@ -124,6 +120,14 @@ def press(entity_id, state, attrs, previous_mode=None):
         if mode and mode in modes:
             return Command(domain, "set_hvac_mode", {"entity_id": entity_id, "hvac_mode": mode})
     return None
+
+def media_hold(entity_id,state,attrs):
+    if not entity_id.startswith("media_player.") or state in ("unknown","unavailable"):return None
+    features=int(attrs.get("supported_features",0))
+    if state=="playing" and features&1:return Command("media_player","media_pause",{"entity_id":entity_id})
+    if state in ("paused","idle","on","off") and features&16384:return Command("media_player","media_play",{"entity_id":entity_id})
+    return None
+
 
 def summary(entity_id, state, attrs, unit="°C"):
     domain = entity_id.partition(".")[0]

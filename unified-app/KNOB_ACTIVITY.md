@@ -25,3 +25,5 @@ copy unpacked into the app's private directory. APK-only updates do not replace
 that root-owned file. Use panel preparation or the backed-up `sync_root_worker.py
 --device PANEL_IP:5555` helper when updating native code. Verification must hash
 `/proc/<actual-worker-pid>/exe`, not just app assets.
+
+From app 0.18.0 / HA 1.15.0, the default idle state is the [clock/weather screensaver](KNOB_SCREENSAVER.md), with red LED. Disable Show screensaver while idle to restore the LCD-off behavior described above.

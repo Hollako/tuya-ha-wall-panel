@@ -23,8 +23,8 @@ final class NativeWorker implements Closeable {
     private static String sha(byte[] data)throws Exception {byte[] digest=MessageDigest.getInstance("SHA-256").digest(data);StringBuilder b=new StringBuilder();for(byte v:digest)b.append(String.format(java.util.Locale.US,"%02x",v&255));return b.toString();}
     private static void write(File file,byte[] data)throws IOException {FileOutputStream out=new FileOutputStream(file);try{out.write(data);out.getFD().sync();}finally{out.close();}}
     static File prepare(Context context,PanelConfig config)throws Exception {
-        String prefix="hardware/g10-arm64/";JSONObject metadata=new JSONObject(new String(read(context.getAssets().open(prefix+"manifest.json"),8192),"UTF-8"));
-        if(metadata.getInt("protocol")!=1||!"g10".equals(metadata.getString("profile")))throw new IOException("Unsupported worker package");
+        String prefix=NativeAssets.prefix(config.profile,android.os.Build.SUPPORTED_ABIS);JSONObject metadata=new JSONObject(new String(read(context.getAssets().open(prefix+"manifest.json"),8192),"UTF-8"));
+        if(metadata.getInt("protocol")!=1||!config.profile.equals(metadata.getString("profile"))||!NativeAssets.abi(android.os.Build.SUPPORTED_ABIS).equals(metadata.getString("abi"))||!metadata.optBoolean("runtime_ready",false))throw new IOException("Unsupported worker package");
         byte[] binary=read(context.getAssets().open(prefix+"wallpanel-core"),1024*1024);
         if(!sha(binary).equals(metadata.getString("sha256")))throw new IOException("Worker integrity check failed");
         File parent=context.getFilesDir().getCanonicalFile();File folder=new File(parent,"g10-runtime");
@@ -57,7 +57,7 @@ final class NativeWorker implements Closeable {
         }},"wallpanel-native-reader").start();
     }
     boolean send(String operation){
-        if(closing||socket==null||operation.length()>1100||!operation.matches("(?:status|management (?:reboot|status) 0|display (?:enabled|status|brightness|power|dim_after|off_after|dim_brightness) (?:0|[1-9][0-9]{0,4})|knob_status|audio_status|audiomodules [01] [01]|audio (?:power [01]|speakers [01]|level (?:0|[1-9][0-9]?|100))|knobmodules [01] [01]|knob (?:frame|title|value|detail|power|follow_main|activity|color|led) (?:[0-9a-f]+|-)|relay [12] [01]|bind [1-4] [0-2] [0-2]|modules [01] [01])"))return false;
+        if(closing||socket==null||operation.length()>1100||!operation.matches("(?:status|management (?:reboot|status) 0|display (?:enabled|status|brightness|power|dim_after|off_after|dim_brightness) (?:0|[1-9][0-9]{0,4})|knob_status|audio_status|audiomodules [01] [01]|audio (?:power [01]|speakers [01]|level (?:0|[1-9][0-9]?|100))|knobmodules [01] [01]|knob (?:frame|media_frame|speaker_mute|title|value|detail|power|follow_main|activity|screensaver|ring|color|led) (?:[0-9a-f]+|-)|relay [12] [01]|bind [1-4] [0-2] [0-2]|modules [01] [01])"))return false;
         return requests.offer(new Request(operation));
     }
     private void writeCommands(){

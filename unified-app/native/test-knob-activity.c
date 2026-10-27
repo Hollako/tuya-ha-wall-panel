@@ -20,7 +20,7 @@ int main(void){
     char directory[]="/tmp/wp-knob-activity-XXXXXX";assert(mkdtemp(directory));
     snprintf(settings_path,sizeof(settings_path),"%s/policy",directory);
     core_config.knob_input=core_config.knob_display=1;knob_ready=1;
-    core_knob_activity_load();assert(core_knob_activity_enabled);
+    core_knob_activity_load();assert(core_knob_activity_enabled);saver_enabled=0;
     knob_power=1;knob_follow=0;knob_led=1;
     core_knob_activity_tick(1000);assert(!core_knob_activity_power(1000)&&led_value==0);
     core_knob_activity_at(2000);core_knob_activity_tick(2000);

@@ -9,6 +9,7 @@ public final class PanelConfig {
     public String deviceId="";
     public long revision=0;
     public String dashboard="", haUrl="", broker="", username="", password="", profile="generic",mqttBase="";
+    public String displayMode="web",appPackage="";
     public int port=1883;
     public boolean tls=false, lock=false;
     public Set<String> selected=new HashSet<String>();
@@ -38,8 +39,10 @@ public final class PanelConfig {
         if(mqttBase.length()>0)HardwareTopics.base(mqttBase);
         if(deviceId.length()>0&&!deviceId.matches("[a-z0-9_]{1,48}"))throw new IllegalArgumentException("Invalid panel identity");
         dashboard=webUrl(dashboard,true);haUrl=webUrl(haUrl,true);
+        if(!displayMode.equals("web")&&!displayMode.equals("app"))throw new IllegalArgumentException("Unknown display mode");
+        if(displayMode.equals("app")&&(appPackage.length()>160||!appPackage.matches("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+")||appPackage.equals("local.wallpanel.app")))throw new IllegalArgumentException("Choose an installed app");
         if(port<1||port>65535)throw new IllegalArgumentException("Broker port must be 1 to 65535");
-        if(!profile.equals("generic")&&!profile.equals("g10"))throw new IllegalArgumentException("Unknown hardware profile");
+        if(!profile.equals("generic")&&!profile.equals("g10")&&!profile.equals("a133"))throw new IllegalArgumentException("Unknown hardware profile");
         if(broker.length()>0||username.length()>0||password.length()>0)validateBroker();
         for(String id:selected)if(ModuleCatalog.find(id)==null)throw new IllegalArgumentException("Unknown module");
     }

@@ -34,6 +34,12 @@ public final class StoreTests {
         refused=false;try{a.save(beforeRemote,"");}catch(IllegalStateException e){refused=true;}check(refused);
         refused=false;try{a.applyDashboard("javascript:bad");}catch(IllegalArgumentException e){refused=true;}check(refused);check(b.load().dashboard.equals(applied.dashboard));
         a.applyDashboard("");check(b.load().dashboard.equals(""));
+        PanelConfig app=a.load();check(app.displayMode.equals("web")&&app.appPackage.equals(""));
+        app.displayMode="app";app.appPackage="io.homeassistant.companion.android";a.save(app,"");
+        check(b.load().displayMode.equals("app")&&b.load().appPackage.equals(app.appPackage));
+        check(b.dashboardSettings().displayMode.equals("app")&&b.dashboardSettings().appPackage.equals(app.appPackage));
+        a.applyDashboard("https://ha.example/saved-web");check(b.load().displayMode.equals("app"));
+        app=a.load();app.displayMode="web";a.save(app,"");check(b.load().displayMode.equals("web"));
         System.out.println("PASS: "+checks+" production-store checks: existing settings/identity, encrypted-draft restart recovery, explicit apply, stale-form protection, failed encryption/commit, and no credential plaintext.");
     }
 }

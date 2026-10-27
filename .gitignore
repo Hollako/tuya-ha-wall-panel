@@ -40,6 +40,24 @@ asterisk-audit/private-backups/
 !/wallpanel-hardware/
 !/panel-172.16.1.26/
 !/audio/
+!/shared/
+!/airplay-app/
+
+/airplay-app/*
+!/airplay-app/README.md
+!/airplay-app/docs/
+!/airplay-app/native/
+!/airplay-app/scripts/
+!/airplay-app/tests/
+!/airplay-app/android/
+/airplay-app/android/*
+!/airplay-app/android/*.gradle
+!/airplay-app/android/gradle.properties
+!/airplay-app/android/app/
+/airplay-app/android/app/*
+!/airplay-app/android/app/build.gradle
+!/airplay-app/android/app/src/
+/airplay-app/android/app/src/main/jniLibs/
 
 /unified-app/*
 !/unified-app/src/
@@ -56,8 +74,12 @@ asterisk-audit/private-backups/
 !/unified-app/build.py
 !/unified-app/build_native.py
 !/unified-app/build_setup_package.py
+!/unified-app/bootstrap_panel.py
 !/unified-app/media_dependencies.py
 !/unified-app/sync_root_worker.py
+!/unified-app/receiver_payloads.py
+!/unified-app/receiver_cutover.py
+!/unified-app/engine_sources.py
 /unified-app/assets/hardware/
 /unified-app/assets/provision/manifest.json
 /unified-app/media3-deps/*
@@ -87,3 +109,11 @@ asterisk-audit/private-backups/
 **/.env
 **/.env.*
 **/*credentials*
+**/signing/
+**/keystore.properties
+
+# Dependency build recipes are source, not generated build outputs.
+!/airplay-app/native/build/
+/airplay-app/native/build/*
+!/airplay-app/native/build/*.sh
+!/unified-app/migrate_sip.py
