@@ -46,6 +46,8 @@ public class MainActivity extends Activity {
   private Button btnApply;
   private Button btnCheckRoot;
   private Button btnLogs;
+  private Button sourcePlay,sourcePause,sourceToggle,sourceNext,sourcePrevious;
+  private TextView sourceControl;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
@@ -65,6 +67,13 @@ public class MainActivity extends Activity {
   }
 
   private void bindViews() {
+    android.widget.Button groups=new android.widget.Button(this);groups.setText("Audio groups");
+    groups.setOnClickListener(v->startActivity(new android.content.Intent(this,com.wallpanel.multiroom.GroupSettingsActivity.class)));
+    ((android.view.ViewGroup)findViewById(R.id.btnSourcePlay).getParent().getParent()).addView(groups,1);
+    sourceNext=findViewById(R.id.btnSourceNext);sourcePrevious=findViewById(R.id.btnSourcePrevious);
+    sourceNext.setOnClickListener(v->sourceCommand("next"));sourcePrevious.setOnClickListener(v->sourceCommand("previous"));
+    sourcePlay=findViewById(R.id.btnSourcePlay);sourcePause=findViewById(R.id.btnSourcePause);sourceToggle=findViewById(R.id.btnSourceToggle);sourceControl=findViewById(R.id.tvSourceControl);
+    sourcePlay.setOnClickListener(v->sourceCommand("play"));sourcePause.setOnClickListener(v->sourceCommand("pause"));sourceToggle.setOnClickListener(v->sourceCommand("play_pause"));
     tvBluetooth = findViewById(R.id.tvBluetooth);
     btnBluetoothPair = findViewById(R.id.btnBluetoothPair);
     etName = findViewById(R.id.etName);
@@ -200,6 +209,9 @@ public class MainActivity extends Activity {
   }
 
   private void updateStatus() {
+    boolean remote=ReceiverRemote.available();sourceNext.setEnabled(remote);sourcePrevious.setEnabled(remote);sourcePlay.setEnabled(remote);sourcePause.setEnabled(remote);sourceToggle.setEnabled(remote);
+    sourceControl.setText(remote?"AirPlay source: "+ReceiverRemote.playback()+". Commands affect the source's group.":"Connect an AirPlay 2 source to control playback.");
+    if(!ReceiverRemote.lastError().isEmpty())sourceControl.append("\n"+ReceiverRemote.lastError());
     java.util.Map<String, Object> bt = bluetoothSink.snapshot();
     boolean configured = Boolean.TRUE.equals(bt.get("sinkConfigured"));
     boolean enabled = Boolean.TRUE.equals(bt.get("enabled"));
@@ -214,30 +226,10 @@ public class MainActivity extends Activity {
     if (bt.get("error") != null) btText += "\n" + bt.get("error");
     tvBluetooth.setText(btText);
     btnBluetoothPair.setEnabled(configured && enabled);
-    StringBuilder sb = new StringBuilder();
-    sb.append("State: ").append(state.getState().name()).append("\n");
-    sb.append("PTP lease: ").append(state.isRootAvailable() ? "✓" : "✗").append("\n");
-    sb.append("IP: ").append(state.getLocalIp() != null ? state.getLocalIp() : "unknown").append("\n");
-    sb.append("Multicast Lock: ").append(state.isMulticastLockHeld() ? "✓" : "✗").append("\n");
-    if (state.isPlaying()) {
-      sb.append("\n--- Streaming ---\n");
-      if (state.getTitle() != null) sb.append("Title: ").append(state.getTitle()).append("\n");
-      if (state.getArtist() != null) sb.append("Artist: ").append(state.getArtist()).append("\n");
-      if (state.getClientModel() != null) sb.append("From: ").append(state.getClientModel()).append("\n");
-      sb.append("Underruns: ").append(state.getUnderruns()).append("\n");
-      sb.append("Drift Corrections: ").append(state.getDriftCorrections()).append("\n");
-    }
-    sb.append("\nUptime: ").append((System.currentTimeMillis() - state.getUptimeStartMs()) / 1000).append("s\n");
-    java.util.Map<String,Object> timing=state.getAudioTiming();
-    if(timing.containsKey("clock")) {
-      sb.append("Playback timing: ").append(Boolean.TRUE.equals(timing.get("timestampValid")) ? "Audio timestamp available" : "Estimating; timestamp not stable").append("\n");
-      sb.append("Output underruns: ").append(timing.get("underruns")).append("\n");
-    }
-    sb.append("Restarts: ").append(state.getRestarts()).append("\n");
-    if (state.getErrorMessage() != null) {
-      sb.append("\nError: ").append(state.getErrorMessage()).append("\n");
-    }
-    tvStatus.setText(sb.toString());
+    tvStatus.setText(ReceiverStatusText.format(state));
+  }
+  private void sourceCommand(String command){
+    if(!ReceiverRemote.request(command))android.widget.Toast.makeText(this,ReceiverRemote.lastError(),android.widget.Toast.LENGTH_LONG).show();
   }
 
   @Override

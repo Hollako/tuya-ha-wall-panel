@@ -1,5 +1,14 @@
 # Tuya HA Wall Panel — unified app
 
+Version **0.24.4** matches the dedicated receiver's embedded status panel, Check
+PTP Helper and View Logs buttons. The shared status formatter keeps both products
+consistent. Audio receiver settings also expose the same optional receiver web
+page, a clearly labelled AirPlay listening port (default 7000), and web-page
+enable/port/access-token settings. Enable the web page and save to access it at
+`http://PANEL_IP:8099/` or use Open receiver web page. Its API supports this page;
+the HA integration continues using MQTT. Settings include Back/Hide keyboard
+controls and an interface dropdown; default tunnel interfaces are hidden.
+
 Current local build **0.22.0** adds [installed-app mode](EXTERNAL_APP_MODE.md) with app selection, administrator hotspot, root-backed task recovery and intercom return. ARM32 and ARM64 remain in one APK. [Architecture and A133 status](MULTI_ABI.md): Dashboard/SIP profile available; A133 direct hardware remains disabled pending verification. Installed on the G10 with its web dashboard still selected; external-app physical checks are pending. The A133 remains unchanged.
 
 Build **0.19.0** / HA **1.16.0** adds [direct local media knob control](LOCAL_MEDIA_KNOB.md): rotate volume, press mute, hold play/pause, double press next page. The panel's own Audio entity uses its local audio engine and knob feedback; other media entities use HA.
@@ -210,3 +219,11 @@ Android 0.3.0 UI, Home lifecycle and hardware checks remain for the user
 after a later installation/activation step.
 
 See `ARCHITECTURE.md` for the migration sequence.
+
+Settings navigation (0.25.2): setup includes an Android settings shortcut and a
+draggable floating Back button. The accessibility service receives window-state
+events only, cannot retrieve window contents or filter keys, and invokes Back
+only after a tap. It is hidden on the dashboard, installed apps and intercom UI.
+Prepare / repair enables it while preserving other accessibility services;
+restore restores the prior accessibility settings. Without root preparation,
+use Enable floating Back button in setup and enable it in Android accessibility.

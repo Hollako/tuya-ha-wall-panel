@@ -197,4 +197,33 @@ class MigrationTests(unittest.IsolatedAsyncioTestCase):
         await migration.async_unify_registry(self.hass,self.entry)
         self.assertFalse(self.registry.moves);self.devices.async_remove_device.assert_not_called()
 
+    def add_room(self,node='panel-aaaaaaaa',device_id='room-a',correct_identity=True):
+        devices={device_id:types.SimpleNamespace(identifiers={("tuya_wall_panel",("audio_room:"+node) if correct_identity else "wallpanel/other")})}
+        previous=getattr(self.devices,'async_get',None)
+        self.devices.async_get=lambda key:devices.get(key) or (previous(key) if previous is not None else None)
+        for domain,suffix in [('media_player','player'),('number','timing'),('sensor','connection')]:
+            entity_id=domain+'.'+device_id+'_'+suffix
+            self.registry.entities[entity_id]=types.SimpleNamespace(entity_id=entity_id,domain=domain,platform='tuya_wall_panel',unique_id='controller_group_room_'+node+'_'+suffix,device_id=device_id,config_entry_id='controller')
+
+    async def test_reload_with_two_discovered_rooms_keeps_all_devices_separate(self):
+        self.add_room();self.add_room('panel-bbbbbbbb','room-b')
+        before={key:(value.device_id,value.unique_id) for key,value in self.registry.entities.items() if value.device_id.startswith('room-')}
+        result=await migration.async_unify_registry(self.hass,self.entry)
+        self.assertEqual(result,'controller-device')
+        self.assertEqual(before,{key:(self.registry.entities[key].device_id,self.registry.entities[key].unique_id) for key in before})
+        self.assertEqual(self.devices.async_update_device.call_args.args[0],'controller-device')
+        self.registry.moves.clear();self.devices.async_remove_device.reset_mock()
+        await migration.async_unify_registry(self.hass,self.entry)
+        self.assertFalse(self.registry.moves);self.devices.async_remove_device.assert_not_called()
+
+    async def test_an_actual_second_controller_still_blocks_without_changes(self):
+        self.registry.entities['sensor.other_controller']=types.SimpleNamespace(entity_id='sensor.other_controller',domain='sensor',platform='tuya_wall_panel',unique_id='controller_other',device_id='unexpected-controller',config_entry_id='controller')
+        with self.assertRaises(exceptions.ConfigEntryNotReady):await migration.async_unify_registry(self.hass,self.entry)
+        self.assertFalse(self.registry.moves);self.devices.async_update_device.assert_not_called()
+
+    async def test_room_unique_id_without_matching_device_identity_is_not_ignored(self):
+        self.add_room(correct_identity=False)
+        with self.assertRaises(exceptions.ConfigEntryNotReady):await migration.async_unify_registry(self.hass,self.entry)
+        self.assertFalse(self.registry.moves);self.devices.async_update_device.assert_not_called()
+
 if __name__=='__main__':unittest.main(verbosity=2)

@@ -60,12 +60,13 @@ public final class MainActivity extends Activity {
         final PanelConfig c;
         try{c=store.load();}catch(Exception e){new AlertDialog.Builder(this).setTitle("Settings unavailable").setMessage("Stored credentials could not be decrypted. No settings were overwritten.").setPositiveButton("Close",new DialogInterface.OnClickListener(){public void onClick(DialogInterface d,int w){finish();}}).show();return;}
         formReady=false;loadedRevision=c.revision;draftHandler.removeCallbacksAndMessages(null);
-        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout page=new LinearLayout(this);page.setOrientation(LinearLayout.VERTICAL);SetupKeyboard.prepare(this,page);
         status=new TextView(this);status.setTextSize(15);status.setPadding(16,8,16,4);page.addView(status);
         LinearLayout controls=new LinearLayout(this);
         Button saveButton=new Button(this);saveButton.setText("Save settings");saveButton.setOnClickListener(new View.OnClickListener(){public void onClick(View v){save(false);}});
         Button openButton=new Button(this);openButton.setText("Save and open");openButton.setOnClickListener(new View.OnClickListener(){public void onClick(View v){save(true);}});
-        controls.addView(saveButton,new LinearLayout.LayoutParams(0,-2,1));controls.addView(openButton,new LinearLayout.LayoutParams(0,-2,1));page.addView(controls);
+        Button keyboardButton=new Button(this);keyboardButton.setText("Hide keyboard");keyboardButton.setOnClickListener(v->SetupKeyboard.hide(this));
+        controls.addView(saveButton,new LinearLayout.LayoutParams(0,-2,1));controls.addView(openButton,new LinearLayout.LayoutParams(0,-2,1));controls.addView(keyboardButton,new LinearLayout.LayoutParams(0,-2,1));page.addView(controls);
         ScrollView scroll=new ScrollView(this);form=new LinearLayout(this);form.setOrientation(LinearLayout.VERTICAL);form.setPadding(24,8,24,32);scroll.addView(form);page.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(page);modules.clear();
         String version="";try{version=getPackageManager().getPackageInfo(getPackageName(),0).versionName;}catch(Exception ignored){}
         text("Tuya HA Wall Panel",26);text("Build "+version+"\nThe app starts saved hardware automatically after boot and updates, and recovers its hardware worker if needed. Hardware stays active while Wi-Fi reconnects. Screenshots refresh every five minutes. Panel installation prepares supported hardware with backups.",15);
@@ -74,6 +75,9 @@ public final class MainActivity extends Activity {
         button("Network assignments",new View.OnClickListener(){public void onClick(View v){persistDraft();startActivity(new Intent(MainActivity.this,NetworkSettingsActivity.class));}});
         button("Intercom settings",new View.OnClickListener(){public void onClick(View v){persistDraft();startActivity(new Intent(MainActivity.this,SipSettingsActivity.class));}});
         button("Audio receiver settings",new View.OnClickListener(){public void onClick(View v){persistDraft();startActivity(new Intent(MainActivity.this,ReceiverSettingsActivity.class));}});
+        button("Audio groups",v->{persistDraft();startActivity(new Intent(this,com.wallpanel.multiroom.GroupSettingsActivity.class));});
+        button("Android settings",v->{persistDraft();try{startActivity(new Intent(android.provider.Settings.ACTION_SETTINGS));}catch(Exception error){Toast.makeText(this,"Android settings is unavailable",Toast.LENGTH_LONG).show();}});
+        if(!SettingsBackService.enabled(this))button("Enable floating Back button",v->{persistDraft();startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));});
         homeStatus=text("",14);refreshHomeStatus();
         button("Set as Home app",new View.OnClickListener(){public void onClick(View v){if(save(false))LauncherSupport.chooseHome(MainActivity.this);}});
         text("Choose Tuya HA Wall Panel in Android's Home app settings. Home opens your saved dashboard, or setup if no dashboard is configured. Android's pull-down and navigation controls are blocked while the dashboard is active; setup restores them.",14);

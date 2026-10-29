@@ -1,0 +1,29 @@
+{
+  "engine": "snapcast-0.34.0+oboe-1.9.3",
+  "revision": "ee0f896cd02c474bf18c6cd9f10b0b7c8b6dd009",
+  "group_patch": "timestamp-output-v3-fine-volume",
+  "oboe_revision": "b15f5e39c01a7ada306d959e5129620b145fb8b4",
+  "license": "GPL-3.0-or-later",
+  "abis": {
+    "arm64-v8a": {
+      "libwpar_groupserver.so": {
+        "path": "shared/multiroom/native/arm64-v8a/libwpar_groupserver.so",
+        "sha256": "8cc34abd8c5c8b6f77f1a151cc291cbc9eda0b2cd3699e11fc188e9f676e3fbb"
+      },
+      "libwpar_groupclient.so": {
+        "path": "shared/multiroom/native/arm64-v8a/libwpar_groupclient.so",
+        "sha256": "233ad6885b34345cd3dea98bcba93f3825fd401acad44809593fb08f878f8a51"
+      }
+    },
+    "armeabi-v7a": {
+      "libwpar_groupserver.so": {
+        "path": "shared/multiroom/native/armeabi-v7a/libwpar_groupserver.so",
+        "sha256": "d5156a9c77c0d95c8f95f3e4bad42194e8028ccb3be91f6844a110222320f7ae"
+      },
+      "libwpar_groupclient.so": {
+        "path": "shared/multiroom/native/armeabi-v7a/libwpar_groupclient.so",
+        "sha256": "290eeaa0c91fdaeb26fdc0176e391a9219641fcb773925f20d56fdce8fb0e5fd"
+      }
+    }
+  }
+}

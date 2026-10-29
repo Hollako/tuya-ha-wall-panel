@@ -19,6 +19,11 @@ def payloads():
     return result
 
 def add_to_apk(archive):
+    archive.write(ROOT/'airplay-app/android/app/src/main/assets/timing.html','assets/timing.html')
+    archive.write(ROOT/'airplay-app/android/app/src/main/assets/groups.html','assets/groups.html')
+    archive.write(ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group-bridge.jar','assets/bluetooth-group-bridge.jar')
+    for path in (ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group').rglob('*'):
+        if path.is_file():archive.write(path,'assets/bluetooth-group/'+path.relative_to(ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group').as_posix())
     for (abi,name),path in payloads().items():
         destination=('lib/'+abi+'/libwpar_shairport.so') if name=='shairport-sync' else ('assets/receiver/'+abi+'/'+name)
         archive.write(path,destination)

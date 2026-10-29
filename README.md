@@ -102,6 +102,19 @@ panel's MQTT, SIP, camera or HA credentials.
 
 ## Development
 
+Current development builds: unified app **0.29.1**, dedicated audio receiver
+**1.7.1**, and HA integration **1.22.0**. New features include panel discovery,
+saved audio groups, independent room volume/mute/timing, local music browsing
+through the web UI and HA, AirPlay transport/artwork improvements, and settings
+navigation improvements. See [group documentation](shared/multiroom/GROUPS.md).
+
+**Bluetooth grouping is experimental.** The tested A133 firmware can invalidate
+its Bluetooth audio stream when the group capture route changes. Prepare the
+Bluetooth group before reconnecting the phone; reapplying the same Bluetooth
+input now preserves the capture route. Audio was heard on the test panels, but
+the initial disconnect and remaining stability issues are unresolved. See
+[Bluetooth notes](shared/multiroom/BLUETOOTH.md).
+
 See [BUILDING.md](BUILDING.md) for the existing Windows/WSL toolchain. The Android
 build is currently developer-oriented and needs local tool paths. A developer
 build signed with a different key cannot update an existing signed installation.

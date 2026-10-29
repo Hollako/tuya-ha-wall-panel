@@ -17,6 +17,17 @@
         android:textStyle="bold"
         android:layout_marginBottom="8dp"/>
 
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+      <Button android:id="@+id/btnSourcePlay" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Play" />
+      <Button android:id="@+id/btnSourcePause" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Pause" />
+      <Button android:id="@+id/btnSourceToggle" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Play / pause" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+      <Button android:id="@+id/btnSourcePrevious" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Previous" />
+      <Button android:id="@+id/btnSourceNext" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Next" />
+    </LinearLayout>
+    <TextView android:id="@+id/tvSourceControl" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="AirPlay source control" />
+
     <EditText
         android:id="@+id/etName"
         android:layout_width="match_parent"

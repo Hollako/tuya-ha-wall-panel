@@ -1,5 +1,17 @@
 # Tuya Wall Panel for KSA Home Assistant
 
+Version **1.19.0** adds AirPlay album artwork to the Audio media-player entity.
+The app sends a bounded thumbnail over the existing MQTT connection; enabling
+the panel's web server is not required. Requires unified app 0.25.0. Artwork is
+cleared when the sender has no image, changes to a different album, or a
+different source is selected. Copy the component folder and restart HA.
+
+Version **1.18.2** selects knob weather icons using HA's sun position, including
+night variants for cloudy, wet, snowy and windy conditions. Requires app 0.24.1
+for the new icon variants. It also includes the **Local Playback** source rename
+from 1.18.1, preserving existing source commands and automations. Copy the updated
+component folder to HA and restart HA.
+
 Version **1.10.0** adds **Dim after**, **Display off after** and **Dim brightness**
 configuration numbers for app 0.7/shared controller. Timers count total inactivity
 from the last screen interaction; zero disables each. Defaults are 1 minute dim,

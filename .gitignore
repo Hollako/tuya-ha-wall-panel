@@ -1,4 +1,7 @@
 **/mqtt.conf
+/shared/multiroom-work/
+/shared/multiroom/native/
+/shared/multiroom/vendor/
 **/*credentials*.json
 **/com.sznaner.*.xml
 **/python-deps/
@@ -61,6 +64,7 @@ asterisk-audit/private-backups/
 
 /unified-app/*
 !/unified-app/src/
+!/unified-app/res/
 !/unified-app/native/
 !/unified-app/system-ui/
 !/unified-app/startup/
@@ -73,9 +77,11 @@ asterisk-audit/private-backups/
 !/unified-app/test*.py
 !/unified-app/build.py
 !/unified-app/build_native.py
+!/unified-app/build_bluetooth_bridge.py
 !/unified-app/build_setup_package.py
 !/unified-app/bootstrap_panel.py
 !/unified-app/media_dependencies.py
+!/unified-app/multiroom_payloads.py
 !/unified-app/sync_root_worker.py
 !/unified-app/receiver_payloads.py
 !/unified-app/receiver_cutover.py

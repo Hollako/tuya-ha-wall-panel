@@ -6,6 +6,22 @@ from .entity import KnobEntity
 
 async def async_setup_entry(hass,entry,async_add_entities):
     async_add_entities([HardwareLevel(entry.runtime_data,s) for s in SPECS if s.domain=="number"]+[DisplaySetting(entry.runtime_data,key,name) for key,name in (("dim_after","Dim after"),("off_after","Display off after"),("dim_brightness","Dim brightness"))]+[ReceiverSetting(entry.runtime_data,key,name) for key,name in (("receiver_delay","AirPlay timing offset"),("receiver_trim","AirPlay trim"))])
+    entry.runtime_data.groups.watch("number",async_add_entities,lambda kind,key:RoomTiming(entry.runtime_data,key) if kind=="room" else None)
+
+from .group_entity import GroupEntity
+class RoomTiming(GroupEntity,NumberEntity):
+    _attr_name="Group timing"
+    _attr_native_min_value=-500
+    _attr_native_max_value=500
+    _attr_native_step=1
+    _attr_native_unit_of_measurement="ms"
+    _attr_mode=NumberMode.SLIDER
+    _attr_entity_category=EntityCategory.CONFIG
+    _attr_icon="mdi:timer-sync-outline"
+    def __init__(self,controller,key):super().__init__(controller,key,"room","timing")
+    @property
+    def native_value(self):return self.record.get("roomDelayMs")
+    async def async_set_native_value(self,value):await self.groups.command("room",target=self.key,roomDelayMs=int(value))
 
 class ReceiverSetting(KnobEntity,NumberEntity):
     _attr_mode=NumberMode.BOX

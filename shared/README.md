@@ -12,7 +12,9 @@ audio, video, door APIs and UI adapters remain canonical in `unified-app/src`.
 
 The dedicated receiver retains its own launcher, boot adapter and optional web
 control. The unified product owns its own boot, PIN/setup, HA connection and media
-routes. Its receiver web server is disabled. Neither product copies the other's
+routes. Its receiver web page is optional and disabled until enabled in Audio
+receiver settings. The page is packaged from the dedicated receiver's same asset.
+Neither product copies the other's
 HA/SIP credentials. Run one receiver owner per physical panel.
 
 The unchanged native AirPlay backend, shared-memory shim and fixed PTP helper are

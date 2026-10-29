@@ -8,6 +8,8 @@ import org.json.*;
 
 /** Foreground owner of the app's optional buttons/relay worker and MQTT transport. */
 public final class BridgeService extends Service implements NativeWorker.Listener {
+    static boolean groupOutput(){BridgeService s=instance;return s!=null&&s.audioEngine!=null&&s.audioEngine.groupOutput();}
+    static void groupEnded(){BridgeService s=instance;if(s!=null&&s.audioEngine!=null)s.audioEngine.groupEnded();}
     static boolean receiverStarted(){BridgeService s=instance;return s!=null&&s.audioEngine!=null&&s.audioEngine.receiverStarted();}
     static void receiverEnded(){BridgeService s=instance;if(s!=null&&s.audioEngine!=null)s.audioEngine.receiverEnded();}
     private static volatile BridgeService instance;private long intercomWake;
@@ -24,6 +26,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     private volatile LocalMediaKnob localMedia=LocalMediaKnob.off();
     private NativeWorker muteWorker;private Boolean muteSent;
     private NativeWorker localFrameWorker;private String localFrameSent="";
+    private KnobArtwork knobArtwork;
     private final ThreadLocal<Boolean> nativeCallback=new ThreadLocal<Boolean>();
     private final java.util.concurrent.ThreadPoolExecutor feedback=new java.util.concurrent.ThreadPoolExecutor(1,1,0,java.util.concurrent.TimeUnit.MILLISECONDS,new java.util.concurrent.ArrayBlockingQueue<Runnable>(128),new java.util.concurrent.ThreadFactory(){public Thread newThread(Runnable work){return new Thread(work,"wallpanel-native-feedback");}});
     private volatile AudioEngine audioEngine;
@@ -194,6 +197,8 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     }
     private void drawLocalMedia(){
         LocalMediaKnob route=localMedia;JSONObject audio=audioState;NativeWorker active=worker;
+        if(knobArtwork==null)knobArtwork=new KnobArtwork(this);
+        knobArtwork.sync(active,route.active&&audio!=null&&"AirPlay".equals(audio.optString("source")),audio==null?"":audio.optString("artwork_id",""));
         if(!route.active||audio==null||active==null||!active.isRunning()||config==null||!config.selected.contains("knob_display")||!config.selected.contains("audio"))return;
         try{
             String frame=KnobTopics.encode("media_frame",route.frame(audio.optDouble("volume",0),audio.optBoolean("muted",false),audio.optString("state","idle"),audio.optString("title",""))+"\n"+(audio.optBoolean("muted",false)?"ON":"OFF"));
@@ -226,6 +231,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     }
     private void audioPublisher(){
         String sent="";MqttSession previous=null;boolean previousOnline=false;
+        String artSent=null;MqttSession artConnection=null;
         while(!stopping){
             refreshRuntimeStatus();
             NativeWorker active=worker;JSONObject data=audioState;boolean online=audioOnline&&config.selected.contains("audio")&&active!=null&&active.isRunning();
@@ -233,6 +239,15 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             if(mqttOnline&&(session!=previous||online!=previousOnline||!json.equals(sent))){
                 publish("/audio/availability",online?"online":"offline",true);if(online&&data!=null)publish("/audio/state",json,true);
                 previous=session;previousOnline=online;sent=json;
+            }
+            if(mqttOnline&&session!=null&&online&&data!=null){
+                com.wallpanel.audioreceiver.ReceiverState receiver=com.wallpanel.audioreceiver.ReceiverState.INSTANCE;String id;byte[] picture;
+                synchronized(receiver){id=receiver.getArtworkId();picture=receiver.getArtwork();}
+                if(!"AirPlay".equals(data.optString("source"))||!id.equals(data.optString("artwork_id"))||picture==null){id="";picture=null;}
+                if(session!=artConnection||!id.equals(artSent))try{
+                    JSONObject image=new JSONObject().put("id",id).put("content_type","image/jpeg").put("image",picture==null?"":android.util.Base64.encodeToString(picture,android.util.Base64.NO_WRAP));
+                    session.publishArtwork(config.mqttBase+"/audio/artwork",image.toString());artConnection=session;artSent=id;
+                }catch(Exception failed){session.close();}
             }
             try{Thread.sleep(200);}catch(InterruptedException e){Thread.currentThread().interrupt();return;}
         }

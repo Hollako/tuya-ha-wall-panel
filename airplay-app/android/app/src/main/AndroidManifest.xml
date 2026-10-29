@@ -5,6 +5,8 @@
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
   <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
   <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -35,6 +37,9 @@
       android:exported="false" />
 
     <service android:name=".BootStartService" android:exported="false" android:directBootAware="true" />
+    <service android:name="com.wallpanel.multiroom.GroupService" android:exported="false" />
+    <activity android:name="com.wallpanel.multiroom.GroupSettingsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+    <activity android:name="com.wallpanel.multiroom.GroupManagerActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
 
     <receiver
       android:directBootAware="true"

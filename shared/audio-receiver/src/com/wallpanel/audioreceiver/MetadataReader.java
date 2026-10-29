@@ -70,10 +70,10 @@ public class MetadataReader implements Runnable {
     if (mData.find()) {
       String b64 = mData.group(1).replaceAll("\\s+", "");
       binary=Base64.decode(b64, Base64.DEFAULT);
-      data = new String(binary, java.nio.charset.StandardCharsets.UTF_8);
+      if(!"PICT".equals(codeStr))data = new String(binary, java.nio.charset.StandardCharsets.UTF_8);
     }
 
-    if ("PICT".equals(codeStr)) { final byte[] art=binary; post(()->state.setArtwork(art)); return; }
+    if ("PICT".equals(codeStr)) { final ArtworkImage art=ArtworkImage.decode(binary);post(()->state.setArtwork(art==null?null:art.jpeg,art==null?null:art.rgb));return; }
     dispatch(typeStr, codeStr, data);
   }
 

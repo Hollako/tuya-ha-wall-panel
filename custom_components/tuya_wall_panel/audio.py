@@ -3,25 +3,56 @@ import json
 import math
 import time
 import uuid
+import base64
+import hashlib
+import re
+import binascii
 from datetime import datetime,timezone
 from homeassistant.components import mqtt
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
+
+LOCAL_PLAYBACK="Local Playback"
+LEGACY_LOCAL_PLAYBACK="Android playback"
+
+def source_name(value):
+    """Display name; keep the established panel command identifier compatible."""
+    return LOCAL_PLAYBACK if value==LEGACY_LOCAL_PLAYBACK else value
 
 class PanelAudio:
     def __init__(self,controller):
         self.controller=controller;self.online=False;self.data={};self._unsubs=[];self.position_updated_at=None
         self._reported={};self._pending={}
         self.owner="legacy"
+        self.artwork_id="";self.artwork=None
 
     async def start(self):
-        for suffix,handler in [("availability",self._availability),("state",self._state),("owner",self._owner)]:
+        for suffix,handler in [("availability",self._availability),("state",self._state),("owner",self._owner),("artwork",self._artwork)]:
             self._unsubs.append(await mqtt.async_subscribe(self.controller.hass,self.controller.base+"/audio/"+suffix,handler,1))
 
     async def stop(self):
         for unsub in self._unsubs:unsub()
         self._unsubs.clear()
         self._pending.clear()
+        self.artwork=None;self.artwork_id=""
+
+    @callback
+    def _artwork(self,message):
+        try:
+            if not isinstance(message.payload,str) or len(message.payload)>100000:return
+            data=json.loads(message.payload)
+            if not isinstance(data,dict):return
+            identity=data.get("id");encoded=data.get("image")
+            if identity=="" and encoded=="":self.artwork=None;self.artwork_id="";self.controller.notify();return
+            if not isinstance(identity,str) or not re.fullmatch(r"[0-9a-f]{64}",identity) or not isinstance(encoded,str) or data.get("content_type")!="image/jpeg":return
+            picture=base64.b64decode(encoded,validate=True)
+            if not 4<=len(picture)<=65536 or not picture.startswith(b"\xff\xd8") or not picture.endswith(b"\xff\xd9") or hashlib.sha256(picture).hexdigest()!=identity:return
+            self.artwork=picture;self.artwork_id=identity;self.controller.notify()
+        except (ValueError,TypeError,binascii.Error):return
+
+    @property
+    def current_artwork(self):
+        return self.artwork if self.online and self.data.get("source")=="AirPlay" and self.artwork_id and self.artwork_id==self.data.get("artwork_id") else None
 
     @callback
     def _owner(self,message):
@@ -39,9 +70,15 @@ class PanelAudio:
         try:
             data=json.loads(message.payload)
             if not isinstance(data,dict) or data.get("state") not in ("off","idle","playing","paused","buffering"):return
-            if data.get("source") not in ("Android playback","Line Input","AirPlay"):return
+            if data.get("source") not in (LEGACY_LOCAL_PLAYBACK,LOCAL_PLAYBACK,"Line Input","AirPlay"):return
             sources=data.get("sources")
-            if sources is not None and (not isinstance(sources,list) or not 1<=len(sources)<=3 or any(source not in ("Android playback","Line Input","AirPlay") for source in sources) or len(set(sources))!=len(sources)):return
+            if sources is not None:
+                if not isinstance(sources,list) or not 1<=len(sources)<=3:return
+                sources=[source_name(source) for source in sources]
+                if any(source not in (LOCAL_PLAYBACK,"Line Input","AirPlay") for source in sources) or len(set(sources))!=len(sources):return
+                data["sources"]=sources
+            data["source"]=source_name(data["source"])
+            if "volume_scope" in data:data["volume_scope"]=source_name(data["volume_scope"])
             volume=data.get("volume")
             if isinstance(volume,bool) or not isinstance(volume,(int,float)) or not math.isfinite(volume) or not 0<=volume<=1:return
             if not isinstance(data.get("muted"),bool):return

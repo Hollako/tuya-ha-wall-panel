@@ -97,12 +97,18 @@ static int knob_render(void) {
 #ifdef WP_KNOB_DRAW_SCREENSAVER
     if(!WP_KNOB_DRAW_SCREENSAVER()){
 #endif
+#ifdef WP_KNOB_DRAW_MEDIA
+    if(!WP_KNOB_DRAW_MEDIA()){
+#endif
     knob_line(knob_text[0],69,24,180,accent);
     knob_line(knob_text[1],143,56,208,0xffffff);
 #ifdef WP_KNOB_DRAW_DETAIL
     WP_KNOB_DRAW_DETAIL();
 #else
     knob_line(knob_text[2],188,22,180,0xb8c8d0);
+#endif
+#ifdef WP_KNOB_DRAW_MEDIA
+    }
 #endif
 #ifdef WP_KNOB_DRAW_SCREENSAVER
     }

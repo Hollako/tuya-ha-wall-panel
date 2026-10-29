@@ -1,6 +1,7 @@
 """Move unloaded MQTT entities through HA's supported registry migration API."""
 import asyncio
 import logging
+import re
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er,device_registry as dr
 from homeassistant.helpers.entity import entity_sources
@@ -9,6 +10,15 @@ from .const import DOMAIN
 from .hardware import LEGACY_ENTITIES
 
 _LOGGER=logging.getLogger(__name__)
+
+def _is_audio_room_entity(entity,devices,entry):
+    """Exclude only proven room rows, never another controller or unknown device."""
+    prefix=entry.entry_id+"_group_room_"
+    if entity.platform!=DOMAIN or not entity.unique_id.startswith(prefix):return False
+    match=re.fullmatch(r"(panel-[A-Za-z0-9-]{8,80})_(?:player|timing|connection)",entity.unique_id[len(prefix):])
+    if not match or not entity.device_id:return False
+    device=devices.async_get(entity.device_id)
+    return device is not None and (DOMAIN,"audio_room:"+match[1]) in device.identifiers
 
 async def async_cleanup_duplicates(hass,entry):
     """Remove only unloaded MQTT copies with a proven native counterpart.
@@ -55,7 +65,10 @@ async def async_unify_registry(hass,entry):
     if any(e.entity_id in entity_sources(hass) for e in legacy):
         raise ConfigEntryNotReady("Stop HA, suspend only this panel's MQTT discovery, then start HA to migrate unloaded entities")
     ours=er.async_entries_for_config_entry(registry,entry.entry_id)
-    device_ids={e.device_id for e in ours if e.device_id}
+    # One entry owns the primary hardware controller plus discovered audio rooms.
+    # Room rows stay on their own devices; legacy MQTT hardware moves only to the
+    # primary controller. Preserve the ambiguity guard for genuinely unknown rows.
+    device_ids={e.device_id for e in ours if e.device_id and not _is_audio_room_entity(e,devices,entry)}
     if len(device_ids)>1:raise ConfigEntryNotReady("Wall Panel has multiple controller devices; migration requires review")
     legacy_devices={e.device_id for e in legacy if e.device_id}
     known_ids={e.entity_id for e in legacy}

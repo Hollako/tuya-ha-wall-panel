@@ -21,6 +21,8 @@ public class ReceiverState {
   private String artist = null;
   private String album = null;
   private byte[] artwork = null;
+  private byte[] knobArtwork;
+  private String artworkId="";
   private boolean artworkAvailable = false;
 
   // Audio stats
@@ -84,6 +86,8 @@ public class ReceiverState {
   public synchronized String getArtist() { return artist; }
   public synchronized String getAlbum() { return album; }
   public synchronized byte[] getArtwork() { return artwork; }
+  public synchronized byte[] getKnobArtwork(){return knobArtwork;}
+  public synchronized String getArtworkId(){return artworkId;}
   public synchronized boolean isArtworkAvailable() { return artworkAvailable; }
   public synchronized int getVolumeTrim() { return volumeTrim; }
   public synchronized int getUnderruns() { return underruns; }
@@ -104,15 +108,21 @@ public class ReceiverState {
   public synchronized void setPlaying(boolean p) { this.playing=p; if(p && (state==State.RUNNING_IDLE||state==State.STARTING))state=State.STREAMING;else if(!p&&state==State.STREAMING)state=State.RUNNING_IDLE; notifyListeners(); }
   public synchronized void setClientIp(String ip) { this.clientIp = ip; notifyListeners(); }
   public synchronized void setClientModel(String model) { this.clientModel = model; notifyListeners(); }
-  public synchronized void setTitle(String t) { this.title = t; notifyListeners(); }
+  public synchronized void setTitle(String t) { if(title!=null&&!title.equals(t)&&(album==null||album.isEmpty())){artwork=null;knobArtwork=null;artworkId="";artworkAvailable=false;}this.title = t; notifyListeners(); }
   public synchronized void setArtist(String a) { this.artist = a; notifyListeners(); }
-  public synchronized void setAlbum(String a) { this.album = a; notifyListeners(); }
+  public synchronized void setAlbum(String a) { if(album!=null&&!album.equals(a)){artwork=null;knobArtwork=null;artworkId="";artworkAvailable=false;}this.album = a; notifyListeners(); }
   public synchronized void setArtwork(byte[] data) {
+    setArtwork(data,null);
+  }
+  public synchronized void setArtwork(byte[] data,byte[] rgb) {
+    if(java.util.Arrays.equals(artwork,data)&&java.util.Arrays.equals(knobArtwork,rgb))return;
     this.artwork = data;
-    this.artworkAvailable = (data != null);
+    this.knobArtwork=rgb;artworkId="";
+    if(data!=null&&data.length>0)try{StringBuilder id=new StringBuilder();for(byte b:java.security.MessageDigest.getInstance("SHA-256").digest(data))id.append(String.format(java.util.Locale.ROOT,"%02x",b&255));artworkId=id.toString();}catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
+    this.artworkAvailable = !artworkId.isEmpty();
     notifyListeners();
   }
-  public synchronized void clearArtwork() { this.artwork = null; this.artworkAvailable = false; notifyListeners(); }
+  public synchronized void clearArtwork() { setArtwork(null,null); }
   public synchronized void setVolumeTrim(int v) { this.volumeTrim = v; notifyListeners(); }
   public synchronized void setOutputUnderruns(int value) { this.underruns=value; }
   public synchronized void incUnderruns() { this.underruns++; }
@@ -131,6 +141,7 @@ public class ReceiverState {
     artist = null;
     album = null;
     artwork = null;
+    knobArtwork=null;artworkId="";
     artworkAvailable = false;
     underruns = 0;
     driftCorrections = 0;

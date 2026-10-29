@@ -45,7 +45,47 @@ class KnobConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_init(self,user_input=None):
-        return self.async_show_menu(step_id="init",menu_options=["entities","screensaver","buttons","order","dashboard"])
+        return self.async_show_menu(step_id="init",menu_options=["entities","screensaver","buttons","order","dashboard","group_network","audio_groups"])
+
+    async def async_step_group_network(self,user_input=None):
+        from .groups import directory
+        errors={};values={**self.values(),**(user_input or {})}
+        if user_input is not None:
+            try:
+                if user_input["group_enabled"]:await directory(self.hass,user_input["group_host"].strip(),int(user_input["group_port"]),user_input.get("group_token",""))
+            except Exception:errors["base"]="group_unavailable"
+            else:return self.async_create_entry(title="",data={**self.config_entry.options,**user_input,"group_host":user_input["group_host"].strip(),"group_port":int(user_input["group_port"])})
+        return self.async_show_form(step_id="group_network",data_schema=vol.Schema({
+            vol.Required("group_enabled",default=values.get("group_enabled",False)):selector.BooleanSelector(),
+            vol.Required("group_host",default=values.get("group_host","")):selector.TextSelector(),
+            vol.Required("group_port",default=values.get("group_port",8099)):selector.NumberSelector(selector.NumberSelectorConfig(min=1,max=65535,step=1,mode=selector.NumberSelectorMode.BOX)),
+            vol.Optional("group_token",default=values.get("group_token","")):selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD))}),errors=errors)
+
+    async def async_step_audio_groups(self,user_input=None):
+        groups=self.config_entry.runtime_data.groups
+        if not groups.enabled:return self.async_abort(reason="group_not_configured")
+        await groups.refresh();errors={}
+        if user_input is not None:
+            self._group_id=user_input["saved_group"]
+            if user_input["action"]=="configure":return await self.async_step_audio_group()
+            try:await groups.command("activate" if user_input["action"]=="play" else "delete",id=self._group_id)
+            except HomeAssistantError:errors["base"]="group_command_failed"
+            else:return self.async_create_entry(title="",data=dict(self.config_entry.options))
+        choices=[{"value":"new","label":"New group"}]+[{"value":p["id"],"label":p["name"]} for p in groups.presets.values()]
+        return self.async_show_form(step_id="audio_groups",data_schema=vol.Schema({vol.Required("saved_group",default="new"):selector.SelectSelector(selector.SelectSelectorConfig(options=choices,mode=selector.SelectSelectorMode.DROPDOWN)),vol.Required("action",default="configure"):selector.SelectSelector(selector.SelectSelectorConfig(options=[{"value":"configure","label":"Create / edit"},{"value":"play","label":"Play saved group"},{"value":"delete","label":"Delete saved group"}],mode=selector.SelectSelectorMode.DROPDOWN))}),errors=errors)
+
+    async def async_step_audio_group(self,user_input=None):
+        groups=self.config_entry.runtime_data.groups;errors={};preset=groups.presets.get(self._group_id,{})
+        if user_input is not None:
+            body=dict(user_input)
+            if self._group_id!="new":body["id"]=self._group_id
+            try:await groups.command("save",**body)
+            except HomeAssistantError:errors["base"]="group_command_failed"
+            else:return self.async_create_entry(title="",data=dict(self.config_entry.options))
+        choices=[{"value":p["id"],"label":p["name"]+(" (offline)" if not p.get("online") else "")} for p in groups.panels.values()]
+        if not choices:return self.async_abort(reason="group_unavailable")
+        values={**preset,**(user_input or {})}
+        return self.async_show_form(step_id="audio_group",data_schema=vol.Schema({vol.Required("name",default=values.get("name","")):selector.TextSelector(),vol.Required("leader",default=values.get("leader",choices[0]["value"])):selector.SelectSelector(selector.SelectSelectorConfig(options=choices,mode=selector.SelectSelectorMode.DROPDOWN)),vol.Required("members",default=values.get("members",[])):selector.SelectSelector(selector.SelectSelectorConfig(options=choices,multiple=True,mode=selector.SelectSelectorMode.DROPDOWN))}),errors=errors)
 
     async def async_step_screensaver(self,user_input=None):
         if user_input is not None:

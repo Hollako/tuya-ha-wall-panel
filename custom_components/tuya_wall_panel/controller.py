@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import time
-from datetime import timedelta
+from datetime import timedelta,timezone
 from homeassistant.components import mqtt
 from homeassistant.core import callback,Context
 from homeassistant.exceptions import HomeAssistantError
@@ -18,6 +18,8 @@ from .audio import PanelAudio
 from .device import PanelDevice
 from .hardware import PanelHardware
 from .app import PanelApp
+from .groups import PanelGroups
+from .groups import PanelGroups
 
 _LOGGER = logging.getLogger(__name__)
 CLOCK = "clock.local"
@@ -47,6 +49,8 @@ class KnobController:
         self.device=PanelDevice(self)
         self.hardware=PanelHardware(self)
         self.app=PanelApp(self)
+        self.groups=PanelGroups(self)
+        self.groups=PanelGroups(self)
 
     def spawn(self,coro):
         if self._closed:coro.close();return
@@ -55,6 +59,8 @@ class KnobController:
         return task
 
     async def start(self):
+        await self.groups.start()
+        await self.groups.start()
         await self.app.start()
         await self.hardware.start()
         await self.audio.start()
@@ -73,13 +79,15 @@ class KnobController:
             self._unsubs.append(await mqtt.async_subscribe(self.hass,topic,handler,1))
         for button in range(1,5):
             self._unsubs.append(await mqtt.async_subscribe(self.hass,self.base+f"/button/{button}/event",self._mqtt_button,1))
-        watched=list(dict.fromkeys(self.targets+([self._saver_weather] if self._saver_weather else [])))
+        watched=list(dict.fromkeys(self.targets+["sun.sun"]+([self._saver_weather] if self._saver_weather else [])))
         if watched:
             self._unsubs.append(async_track_state_change_event(self.hass,watched,self._state_changed))
         self._unsubs.append(async_track_time_interval(self.hass,self._tick,timedelta(seconds=1)))
 
     async def stop(self):
         self._closed=True
+        await self.groups.stop()
+        await self.groups.stop()
         await self.app.stop()
         await self.hardware.stop()
         await self.audio.stop()
@@ -177,7 +185,7 @@ class KnobController:
         if state and eid.startswith("climate.") and state.state not in ("off","unavailable","unknown"):
             self._previous_modes[eid]=state.state;self.save()
         if eid==self.menu.active:self.spawn(self.render())
-        if eid==self._saver_weather:self.spawn(self.render_screensaver())
+        if eid in (self._saver_weather,"sun.sun"):self.spawn(self.render_screensaver())
 
     @callback
     def _tick(self,now):
@@ -340,6 +348,18 @@ class KnobController:
             await mqtt.async_publish(self.hass,self.base+"/knob/media/set",payload,qos=1,retain=False)
             self._local_route_sent=payload
 
+    def _weather_is_night(self,state,now):
+        sun=self.hass.states.get("sun.sun")
+        if sun and sun.state in ("above_horizon","below_horizon"):return sun.state=="below_horizon"
+        # Providers may expose this even when the Sun integration is not loaded.
+        daytime=state.attributes.get("is_daytime") if state else None
+        if isinstance(daytime,bool):return not daytime
+        try:
+            from homeassistant.helpers.sun import is_up
+            return not is_up(self.hass,now.astimezone(timezone.utc))
+        except (ImportError,AttributeError,ValueError):
+            return bool(state and state.state=="clear-night")
+
     async def render_screensaver(self):
         if not self.online or self._closed:return
         now=dt_util.now()
@@ -349,6 +369,9 @@ class KnobController:
             condition=state.state if state and state.state not in ("unknown","unavailable") else "unavailable"
             known={"sunny","clear-night","partlycloudy","cloudy","fog","rainy","pouring","snowy","snowy-rainy","hail","lightning","lightning-rainy","windy","windy-variant","exceptional"}
             if condition not in known:condition="unavailable"
+            night=self._weather_is_night(state,now)
+            if condition in ("sunny","clear-night"):condition="clear-night" if night else "sunny"
+            elif night and condition not in ("unavailable","exceptional"):condition+="-night"
             temperature="--"
             if state and condition!="unavailable":
                 value=state.attributes.get("temperature")

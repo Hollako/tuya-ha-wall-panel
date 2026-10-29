@@ -27,6 +27,7 @@ class ReceiverMergeTests(unittest.TestCase):
         dedicated=root.parent/'airplay-app/android/app/build/outputs/apk/debug/app-debug.apk'
         import hashlib
         with zipfile.ZipFile(unified) as panel,zipfile.ZipFile(dedicated) as receiver:
+            self.assertEqual(panel.read('assets/timing.html'),receiver.read('assets/timing.html'))
             for (abi,name),path in payloads().items():
                 entry=('lib/'+abi+'/libwpar_shairport.so') if name=='shairport-sync' else ('assets/receiver/'+abi+'/'+name)
                 self.assertEqual(hashlib.sha256(panel.read(entry)).digest(),hashlib.sha256(path.read_bytes()).digest())

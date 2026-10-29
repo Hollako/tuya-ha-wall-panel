@@ -28,8 +28,9 @@ for item in json.loads((vendor/'manifest.json').read_text()):
 dependencies.extend(media_jars)
 receiver_sources=ROOT.parent/'shared/audio-receiver/src'
 sip_sources=ROOT.parent/'shared/sip/src'
+group_sources=ROOT.parent/'shared/multiroom/src'
 bootclasspath=str(TOOLS/'android.jar')+';'+str(JAVA.parent.parent/'lib/rt.jar')
-run(JAVA,'-jar',TOOLS/'ecj.jar','-encoding','UTF-8','-1.8','-nowarn','-bootclasspath',bootclasspath,'-classpath',';'.join(str(p) for p in dependencies),'-d',classes,*sorted((ROOT/'src').rglob('*.java')),*sorted(receiver_sources.rglob('*.java')),*sorted(sip_sources.rglob('*.java')),*sorted(resource_java.rglob('*.java')))
+run(JAVA,'-jar',TOOLS/'ecj.jar','-encoding','UTF-8','-1.8','-nowarn','-bootclasspath',bootclasspath,'-classpath',';'.join(str(p) for p in dependencies),'-d',classes,*sorted((ROOT/'src').rglob('*.java')),*sorted(receiver_sources.rglob('*.java')),*sorted(group_sources.rglob('*.java')),*sorted(sip_sources.rglob('*.java')),*sorted(resource_java.rglob('*.java')))
 compiled=BUILD/'app-classes.jar'
 with zipfile.ZipFile(compiled,'w',zipfile.ZIP_DEFLATED) as archive:
     for path in classes.rglob('*.class'):archive.write(path,path.relative_to(classes).as_posix())
@@ -71,6 +72,8 @@ for jar in dependencies:
 with zipfile.ZipFile(BUILD/'resources.apk') as source,zipfile.ZipFile(BUILD/'unsigned.apk','w',zipfile.ZIP_DEFLATED) as out:
     from receiver_payloads import add_to_apk
     add_to_apk(out)
+    from multiroom_payloads import add_group_payloads
+    add_group_payloads(out)
     for name in source.namelist():out.writestr(name,source.read(name))
     for dex in sorted(dex_folder.glob('classes*.dex')):out.write(dex,dex.name)
     for path in (apk/'assets').rglob('*'):

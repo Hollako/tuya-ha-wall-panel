@@ -50,7 +50,10 @@ public final class MqttSession implements Closeable {
         }catch(Exception e){close();throw e;}
     }
     private void packet(int header,byte[] body)throws IOException {
-        if(body.length>16384)throw new IOException("MQTT packet too large");
+        packet(header,body,16384);
+    }
+    private void packet(int header,byte[] body,int limit)throws IOException {
+        if(body.length>limit)throw new IOException("MQTT packet too large");
         synchronized(writer){
             if(socket==null||out==null)throw new IOException("MQTT disconnected");writeStarted=now();
             try{out.write(header);int n=body.length;do{int digit=n%128;n/=128;if(n>0)digit|=128;out.write(digit);}while(n>0);out.write(body);out.flush();lastSent=now();}
@@ -59,6 +62,12 @@ public final class MqttSession implements Closeable {
     }
     public void publish(String topic,String payload,boolean retain)throws IOException {
         ByteArrayOutputStream b=new ByteArrayOutputStream();DataOutputStream d=new DataOutputStream(b);utf(d,topic);d.write(payload.getBytes("UTF-8"));packet(retain?0x31:0x30,b.toByteArray());
+    }
+    /** Artwork only: bounded retained thumbnail; ordinary commands keep their 16-KiB cap. */
+    public void publishArtwork(String topic,String payload)throws IOException {
+        byte[] data=payload.getBytes("UTF-8");
+        if(!topic.endsWith("/audio/artwork")||data.length>100000)throw new IOException("Invalid artwork publication");
+        ByteArrayOutputStream b=new ByteArrayOutputStream();DataOutputStream d=new DataOutputStream(b);utf(d,topic);d.write(data);packet(0x31,b.toByteArray(),100512);
     }
     /** Dedicated screenshot connection only; normal input packets stay capped at 16 KiB. */
     public void publishImage(String topic,byte[] png)throws IOException {

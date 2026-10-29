@@ -25,6 +25,10 @@ def prepare(root,build,run,linux):
             compiled=target/'compiled.zip'
             run('wsl','-d','Ubuntu','--','/home/bacnet/android-sdk/build-tools/34.0.0/aapt2','compile','--dir',linux(res),'-o',linux(compiled))
             resources.append(compiled)
+    if (root/'res').exists():
+        compiled=build/'app-resources.zip'
+        run('wsl','-d','Ubuntu','--','/home/bacnet/android-sdk/build-tools/34.0.0/aapt2','compile','--dir',linux(root/'res'),'-o',linux(compiled))
+        resources.append(compiled)
     command=['wsl','-d','Ubuntu','--','/home/bacnet/android-sdk/build-tools/34.0.0/aapt2','link','--manifest',linux(root/'AndroidManifest.xml'),'-I','/home/bacnet/android-sdk/platforms/android-35/android.jar','--java',linux(generated),'--extra-packages',':'.join(packages),'--auto-add-overlay','-o',linux(build/'resources.apk')]
     for resource in resources:command.extend(['-R',linux(resource)])
     run(*command)

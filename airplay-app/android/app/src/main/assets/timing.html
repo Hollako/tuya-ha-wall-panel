@@ -3,32 +3,50 @@
 <style>
 :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#101820;color:#edf4fa}*{box-sizing:border-box}body{margin:0;padding:24px 18px}main{max-width:520px;margin:auto}h1{font-size:1.8rem;margin-bottom:8px}p{line-height:1.5;color:#b8c9d8}.card{background:#1c2a36;border:1px solid #344858;border-radius:18px;padding:22px;margin-top:22px}label{display:block;font-weight:600}output{display:block;text-align:center;font-size:3rem;font-variant-numeric:tabular-nums;margin:18px 0}input[type=range]{width:100%;height:48px;accent-color:#62d5bd;touch-action:pan-y}.ends,.buttons{display:flex;justify-content:space-between;gap:10px}.ends{color:#b8c9d8;font-size:.9rem}.buttons{margin-top:22px}button{border:1px solid #557082;border-radius:10px;background:#263d4d;color:#fff;min-height:48px;padding:10px 18px;font:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}input[type=password]{width:100%;margin:12px 0;padding:12px;background:#101820;color:#fff;border:1px solid #557082;border-radius:8px;font:inherit}#message{min-height:3em}#detail{font-size:.9rem}small{color:#b8c9d8} [hidden]{display:none!important}
 </style>
-<main><h1 id="name">Receiver timing</h1><p>Listen from your seat and adjust this panel’s timing. Changes save automatically without restarting the app.</p>
+<main><h1 id="name">Receiver timing</h1><p><a href="/groups" style="color:#62d5bd">Rooms and saved audio groups</a></p><img id="cover" alt="Album artwork" hidden style="display:block;max-width:220px;max-height:220px;object-fit:contain;margin:20px auto;border-radius:12px"><p>Listen from your seat and adjust this panel’s timing. Changes save automatically without restarting the app.</p>
 <form id="auth" class="card" hidden><label for="token">API access token</label><input id="token" type="password" autocomplete="off" placeholder="Token configured in the app"><button>Connect</button><p>The token is kept only while this page is open.</p></form>
-<section class="card"><p id="state">Connecting…</p><p id="track"></p><label for="delay">Timing offset</label><output id="value" for="delay">0 ms</output><input id="delay" type="range" min="-500" max="500" step="1" value="0" disabled><div class="ends"><span>−500 ms · Earlier</span><span>Later · +500 ms</span></div><div class="buttons"><button id="minus" disabled>−5 ms</button><button id="reset" disabled>Reset to 0</button><button id="plus" disabled>+5 ms</button></div><p id="message" role="status" aria-live="polite">Loading saved timing…</p><small>Adjust one panel at a time. Large changes may briefly interrupt audio while it resynchronizes.</small></section>
+<section class="card"><p id="groupState">Loading group status…</p><label for="groupVolume">Room volume</label><output id="groupVolumeValue" for="groupVolume">0%</output><input id="groupVolume" type="range" min="0" max="100" step="1" value="0" disabled><div class="buttons"><button id="volumeDown" disabled>−1%</button><button id="volumeMute" disabled>Mute</button><button id="volumeUp" disabled>+1%</button></div><p id="volumeMessage" role="status">Loading room volume…</p><label for="groupDelay">Group timing (this room)</label><output id="groupValue" for="groupDelay">0 ms</output><input id="groupDelay" type="range" min="-500" max="500" step="1" value="0" disabled><div class="ends"><span>−500 ms · Earlier</span><span>Later · +500 ms</span></div><div class="buttons"><button id="groupMinus" disabled>−5 ms</button><button id="groupReset" disabled>Reset to 0</button><button id="groupPlus" disabled>+5 ms</button></div><p id="groupMessage" role="status" aria-live="polite">Loading saved group timing…</p><small>Adjust this room while group music plays. Changes save automatically and apply within a few seconds, without restarting playback. AirPlay timing is separate.</small></section>
+<section class="card"><p id="state">Connecting…</p><p id="track"></p><label for="delay">AirPlay timing (this panel)</label><output id="value" for="delay">0 ms</output><input id="delay" type="range" min="-500" max="500" step="1" value="0" disabled><div class="ends"><span>−500 ms · Earlier</span><span>Later · +500 ms</span></div><div class="buttons"><button id="minus" disabled>−5 ms</button><button id="reset" disabled>Reset to 0</button><button id="plus" disabled>+5 ms</button></div><p id="message" role="status" aria-live="polite">Loading saved timing…</p><small>Adjust one panel at a time. Large changes may briefly interrupt audio while it resynchronizes.</small></section>
+<section class="card"><label>AirPlay source</label><div class="buttons"><button id="sourcePlay" disabled>Play</button><button id="sourcePause" disabled>Pause</button><button id="sourceToggle" disabled>Play / pause</button></div><div class="buttons"><button id="sourcePrevious" disabled>Previous</button><button id="sourceNext" disabled>Next</button></div><p id="sourceStatus">Connect an AirPlay 2 source to control playback.</p><small>These commands control the sending device and can affect its whole multiroom group.</small></section>
 <p id="detail"></p><button id="retry">Refresh status</button></main>
 <script>
 'use strict';
 const $=id=>document.getElementById(id), controls=['delay','minus','reset','plus'];
+const groupControls=['groupDelay','groupMinus','groupReset','groupPlus','groupVolume','volumeDown','volumeUp','volumeMute'];
+let volumeEditing=false,volumeSending=false,volumeFailed=false,volumeRevision=0,volumePending=null;
+let groupReady=false,groupDragging=false,groupPending=null,groupSending=false,groupTimer=null,groupRevision=0,groupWriteFailed=false;
 let token='',ready=false,dragging=false,pending=null,sending=false,timer=null,revision=0,polling=false,writeFailed=false;
-function enable(on){ready=on;controls.forEach(id=>$(id).disabled=!on);}
+let coverId='',coverUrl='',coverSequence=0;
+function clearCover(){coverSequence++;coverId='';$('cover').hidden=true;$('cover').removeAttribute('src');if(coverUrl){URL.revokeObjectURL(coverUrl);coverUrl='';}}
+async function artwork(identity){
+ if(!identity){if(coverId||coverUrl)clearCover();return;}if(identity===coverId)return;
+ clearCover();coverId=identity;const sequence=coverSequence,abort=new AbortController(),timeout=setTimeout(()=>abort.abort(),4000);
+ try{const headers={'If-Match':'"'+identity+'"'};if(token)headers.Authorization='Bearer '+token;const response=await fetch('/api/v1/cover',{headers,cache:'no-store',signal:abort.signal});if(!response.ok)throw Error('Artwork unavailable');const picture=await response.blob();if(sequence!==coverSequence)return;coverUrl=URL.createObjectURL(picture);$('cover').src=coverUrl;$('cover').hidden=false;}
+ catch(error){if(sequence===coverSequence)clearCover();}finally{clearTimeout(timeout);}
+}
+window.addEventListener('pagehide',clearCover);
+function enable(on){ready=on;controls.concat(groupControls).forEach(id=>$(id).disabled=!on);if(!on)groupReady=false;}
 function show(value){$('delay').value=value;$('value').textContent=(value>0?'+':'')+value+' ms';}
 async function api(path,body){
  const abort=new AbortController(),timeout=setTimeout(()=>abort.abort(),4000);
  try{const headers={};if(token)headers.Authorization='Bearer '+token;if(body)headers['Content-Type']='application/json';
  const response=await fetch('/api/v1/'+path,{method:body?'POST':'GET',headers,body:body?JSON.stringify(body):undefined,cache:'no-store',signal:abort.signal});
- if(response.status===401){$('auth').hidden=false;enable(false);throw Error('Enter the API token to connect.');}
+ if(response.status===401){clearCover();$('auth').hidden=false;enable(false);throw Error('Enter the API token to connect.');}
  if(!response.ok)throw Error('Request failed ('+response.status+').');return await response.json();
  }finally{clearTimeout(timeout);}
 }
 async function refresh(){
- if(polling)return;polling=true;const started=revision;
+ if(polling)return;polling=true;const started=revision,groupStarted=groupRevision,volumeStarted=volumeRevision;
  try{const data=await api('status');$('auth').hidden=true;enable(true);
+ groupRefresh(data.group,groupStarted);volumeRefresh(data.group,volumeStarted);
  $('name').textContent=data.receiver.name||'Receiver timing';$('state').textContent=data.receiver.state.replace(/_/g,' ');
  $('track').textContent=[data.stream.title,data.stream.artist].filter(Boolean).join(' · ');
+ artwork(data.stream.artwork?data.stream.artworkId:'');
+ const remote=data.receiver.remote||{};['sourcePlay','sourcePause','sourceToggle','sourceNext','sourcePrevious'].forEach(id=>$(id).disabled=!remote.available);
+ $('sourceStatus').textContent=remote.error||(remote.available?('Source: '+remote.playback+(remote.result?' · '+remote.result:'')):'Connect an AirPlay 2 source to control playback.');
  if(!dragging&&!sending&&pending===null&&started===revision&&!writeFailed){show(data.audio.latencyOffsetMs);$('message').textContent='Saved · live adjustment ready';}
  const t=data.audio.timing||{};$('detail').textContent=t.clock?('Output clock: '+t.clock.replace(/_/g,' ')+' · Underruns: '+t.underruns):'No active audio output. Saved timing will apply when playback starts.';
- }catch(error){$('message').textContent=error.name==='AbortError'?'Connection timed out. Check the panel’s connection.':error.message;if(!ready)enable(false);}
+ }catch(error){if(!groupSending&&groupPending===null)$('groupMessage').textContent='Unable to refresh group status. '+error.message;$('message').textContent=error.name==='AbortError'?'Connection timed out. Check the panel’s connection.':error.message;if(!ready)enable(false);}
  finally{polling=false;}
 }
 function change(value){if(!ready)return;value=Math.max(-500,Math.min(500,value));show(value);pending=value;revision++;writeFailed=false;$('message').textContent='Saving…';if(!timer)timer=setTimeout(()=>{timer=null;send();},120);}
@@ -45,5 +63,45 @@ $('delay').addEventListener('input',e=>change(Number(e.target.value)));
 $('delay').addEventListener('change',endDrag);
 $('minus').onclick=()=>change(Number($('delay').value)-5);$('plus').onclick=()=>change(Number($('delay').value)+5);$('reset').onclick=()=>change(0);
 $('retry').onclick=refresh;$('auth').onsubmit=e=>{e.preventDefault();token=$('token').value;$('token').value='';refresh();};
-refresh();setInterval(()=>{if(!document.hidden)refresh();},2000);
+async function transport(command){try{const result=await api('transport',{command});if(!result.accepted)throw Error('No controllable AirPlay 2 source is connected.');$('sourceStatus').textContent='Command queued; waiting for source feedback.';}catch(error){$('sourceStatus').textContent=error.message;}}
+$('sourceNext').onclick=()=>transport('next');$('sourcePrevious').onclick=()=>transport('previous');
+$('sourcePlay').onclick=()=>transport('play');$('sourcePause').onclick=()=>transport('pause');$('sourceToggle').onclick=()=>transport('play_pause');
+function groupShow(value){$('groupDelay').value=value;$('groupValue').textContent=(value>0?'+':'')+value+' ms';}
+function groupRefresh(group,started){
+ groupReady=!!group;groupControls.forEach(id=>$(id).disabled=!groupReady);
+ if(!group){$('groupState').textContent='Group timing is not available in this app version.';return;}
+ $('groupState').textContent=(group.active?(group.role==='leader'?'Leader':'Receiver')+' · ':'')+group.status;
+ if(!groupDragging&&!groupSending&&groupPending===null&&started===groupRevision&&!groupWriteFailed){groupShow(group.roomDelayMs);$('groupMessage').textContent=group.active?'Saved · live group adjustment ready':'Saved · applies when group playback starts';}
+}
+function groupChange(value){
+ if(!ready||!groupReady)return;value=Math.max(-500,Math.min(500,value));groupShow(value);groupPending=value;groupRevision++;groupWriteFailed=false;$('groupMessage').textContent='Saving…';
+ if(!groupTimer)groupTimer=setTimeout(()=>{groupTimer=null;groupSend();},120);
+}
+async function groupSend(){
+ if(groupSending||groupPending===null)return;groupSending=true;const value=groupPending;groupPending=null;
+ try{const result=await api('group-timing',{roomDelayMs:value});if(!result.accepted)throw Error('The panel did not save group timing.');if(groupPending===null){groupWriteFailed=false;$('groupMessage').textContent='Saved · '+(value>0?'+':'')+value+' ms · allow a few seconds to settle';}}
+ catch(error){groupWriteFailed=true;$('groupMessage').textContent='Not confirmed saved. '+(error.name==='AbortError'?'Connection timed out.':error.message)+' Adjust again to retry.';}
+ finally{groupSending=false;if(groupPending!==null)groupSend();}
+}
+function groupEndDrag(){groupDragging=false;if(groupTimer){clearTimeout(groupTimer);groupTimer=null;}groupSend();}
+$('groupDelay').addEventListener('pointerdown',()=>groupDragging=true);
+$('groupDelay').addEventListener('input',event=>groupChange(Number(event.target.value)));
+$('groupDelay').addEventListener('change',groupEndDrag);
+window.addEventListener('pointerup',groupEndDrag);window.addEventListener('pointercancel',groupEndDrag);
+$('groupMinus').onclick=()=>groupChange(Number($('groupDelay').value)-5);$('groupPlus').onclick=()=>groupChange(Number($('groupDelay').value)+5);$('groupReset').onclick=()=>groupChange(0);
+function volumeShow(level){$('groupVolume').value=Math.round(level*100);$('groupVolumeValue').textContent=(level*100).toFixed(0)+'%';}
+function volumeRefresh(group,started){if(group&&typeof group.volume==='number'&&!volumeEditing&&!volumeSending&&volumePending===null&&!volumeFailed&&started===volumeRevision){volumeShow(group.volume);$('volumeMessage').textContent=group.muted?'Muted':'Saved · room volume';}}
+function volumeChange(percent){if(!ready||!groupReady)return;const level=Math.max(0,Math.min(100,Math.round(percent)))/100;volumeShow(level);volumePending=level;volumeRevision++;volumeFailed=false;$('volumeMessage').textContent='Saving…';}
+async function volumeSend(){
+ if(volumeSending||volumePending===null)return;volumeSending=true;const level=volumePending;volumePending=null;
+ try{const result=await api('group-volume',{volume:level});if(!result.accepted)throw Error('Volume not accepted');if(volumePending===null){volumeFailed=false;$('volumeMessage').textContent='Saved · '+(level*100).toFixed(0)+'%';}}
+ catch(error){volumeFailed=true;$('volumeMessage').textContent='Not confirmed saved. '+error.message;}
+ finally{volumeSending=false;if(volumePending!==null)volumeSend();}
+}
+function volumeEnd(){volumeEditing=false;volumeSend();}
+$('groupVolume').addEventListener('pointerdown',()=>volumeEditing=true);
+$('groupVolume').addEventListener('input',event=>volumeChange(Number(event.target.value)));
+$('groupVolume').addEventListener('change',volumeEnd);window.addEventListener('pointerup',volumeEnd);window.addEventListener('pointercancel',volumeEnd);
+$('volumeDown').onclick=()=>{volumeChange(Number($('groupVolume').value)-1);volumeSend();};$('volumeUp').onclick=()=>{volumeChange(Number($('groupVolume').value)+1);volumeSend();};$('volumeMute').onclick=()=>{volumeChange(0);volumeSend();};
+window.setPanelToken=value=>{token=value;refresh();};refresh();setInterval(()=>{if(!document.hidden)refresh();},2000);
 </script></html>

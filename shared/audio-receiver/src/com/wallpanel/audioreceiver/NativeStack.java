@@ -10,6 +10,7 @@ public class NativeStack {
  private final File configFile,audioFifo,metaFifo;
  private String audioSocketName="wpar-audio-"+android.os.Process.myUid()+"-"+Long.toHexString(System.nanoTime());
  public String getAudioSocketName(){return audioSocketName;}
+ public String getControlSocketName(){return audioSocketName+"-control";}
  public void newAudioSocketSession(){audioSocketName="wpar-audio-"+android.os.Process.myUid()+"-"+Long.toHexString(System.nanoTime());}
  private Process process;private LocalSocket lease;private volatile boolean stopped=true;private volatile int generation=0;
  public NativeStack(Context c,PrefStore p,ReceiverState s,LogBuf l){context=c;prefs=p;state=s;logBuf=l;
@@ -42,6 +43,9 @@ public class NativeStack {
       sb.append("  audio_backend_latency_offset_in_seconds = ").append(latencyMs / 1000.0).append(";\n");
     }
     sb.append("};\n");
+    // iOS may sleep during a long pause. Retain a bounded control connection
+    // rather than declaring it dead after the upstream 60-second default.
+    sb.append("sessioncontrol = { session_timeout = 1800; };\n");
     sb.append("android = {\n");
     sb.append("  output_rate = 48000;\n");
     sb.append("  output_format = \"S16_LE\";\n");
@@ -88,9 +92,10 @@ public class NativeStack {
    synchronized(this){if(stopped||attempt!=generation){socket.shutdownOutput();socket.close();return;}lease=socket;}
    ProcessBuilder pb=new ProcessBuilder(new File(context.getApplicationInfo().nativeLibraryDir,"libwpar_shairport.so").toString(),"-v","-c",configFile.toString());
    pb.environment().put("WPAR_AUDIO_SOCKET",audioSocketName);
+   pb.environment().put("WPAR_CONTROL_SOCKET",getControlSocketName());
    pb.environment().put("WPAR_SHM_DIR","/data/local/wpar-airplay/shm");pb.environment().put("TMPDIR",context.getCacheDir().toString());pb.redirectErrorStream(true);
    Process child;
-   synchronized(this){if(stopped||attempt!=generation)return;process=pb.start();child=process;}
+   synchronized(this){if(stopped||attempt!=generation)return;process=pb.start();child=process;ReceiverRemote.attach(getControlSocketName());}
    new Thread(()->{try {while(control.readLine()!=null){}synchronized(this){if(!stopped&&attempt==generation){child.destroy();}}}catch(IOException ignored){}},"wpar-ptp-lease").start();
    new Thread(()->{try(BufferedReader r=new BufferedReader(new InputStreamReader(child.getInputStream()))){String line;while((line=r.readLine())!=null)logBuf.append(line);}catch(IOException ignored){}},"wpar-log").start();
    Thread.sleep(1000);
@@ -99,5 +104,5 @@ public class NativeStack {
    int rc=child.waitFor();throw new IOException("Shairport exited: "+rc);
   }catch(Exception e){synchronized(this){if(stopped||attempt!=generation)return;stop();}logBuf.append("Receiver error: "+e.toString());mainHandler.post(()->{state.setErrorMessage(e.toString());state.setState(State.ERROR);});}
  }
- public synchronized void stop(){stopped=true;++generation;if(process!=null){process.destroy();process=null;}if(lease!=null){try{lease.shutdownOutput();}catch(IOException ignored){}try{lease.shutdownInput();}catch(IOException ignored){}try{lease.close();}catch(IOException ignored){}lease=null;}state.setRootAvailable(false);}
+ public synchronized void stop(){ReceiverRemote.detach(getControlSocketName());stopped=true;++generation;if(process!=null){process.destroy();process=null;}if(lease!=null){try{lease.shutdownOutput();}catch(IOException ignored){}try{lease.shutdownInput();}catch(IOException ignored){}try{lease.close();}catch(IOException ignored){}lease=null;}state.setRootAvailable(false);}
 }

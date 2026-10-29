@@ -5,10 +5,17 @@ enum { SAVER_Y_OFFSET=6 };
 static int saver_enabled=1,saver_offset,saver_12h,saver_idle_last=-1;
 static long long saver_minute=-1;
 static char saver_condition[32]="unavailable",saver_temperature[129]="--";
+static int saver_night;
 #ifndef WP_KNOB_SAVER_PATH
 #define WP_KNOB_SAVER_PATH STATE"/knob-screensaver"
 #endif
 static const char *saver_conditions[]={"sunny","clear-night","partlycloudy","cloudy","fog","rainy","pouring","snowy","snowy-rainy","hail","lightning","lightning-rainy","windy","windy-variant","exceptional","unavailable"};
+static int saver_weather(const char *condition,char *base,int *night){
+    size_t n=strlen(condition);if(n>=32)return 0;strcpy(base,condition);*night=!strcmp(base,"clear-night");
+    if(n>6&&strcmp(base,"clear-night")&&!strcmp(base+n-6,"-night")){base[n-6]=0;*night=1;}
+    for(size_t i=0;i<sizeof(saver_conditions)/sizeof(*saver_conditions);i++)if(!strcmp(base,saver_conditions[i]))return 1;
+    return 0;
+}
 static int saver_idle(long long now){return saver_enabled&&core_knob_activity_enabled&&core_knob_activity_until<=now;}
 static int saver_parse(const char *payload,int apply){
     if(!strcmp(payload,"OFF")){if(apply){saver_enabled=0;knob_dirty=1;knob_check_at=0;}return 1;}
@@ -16,9 +23,8 @@ static int saver_parse(const char *payload,int apply){
     char *part[4]={b};for(int i=1;i<4;i++){part[i]=strchr(part[i-1],'\n');if(!part[i])return 0;*part[i]++=0;}
     char *end;long offset=strtol(part[0],&end,10);
     if(!*part[0]||*end||offset< -86400||offset>86400|| (strcmp(part[1],"12h")&&strcmp(part[1],"24h"))||!knob_valid_text(part[3],16))return 0;
-    int known=0;for(size_t i=0;i<sizeof(saver_conditions)/sizeof(*saver_conditions);i++)if(!strcmp(part[2],saver_conditions[i]))known=1;
-    if(!known)return 0;
-    if(apply){saver_enabled=1;saver_offset=(int)offset;saver_12h=!strcmp(part[1],"12h");strcpy(saver_condition,part[2]);strcpy(saver_temperature,part[3]);knob_dirty=1;knob_check_at=0;}
+    char condition[32];int night;if(!saver_weather(part[2],condition,&night))return 0;
+    if(apply){saver_enabled=1;saver_offset=(int)offset;saver_12h=!strcmp(part[1],"12h");strcpy(saver_condition,condition);saver_night=night;strcpy(saver_temperature,part[3]);knob_dirty=1;knob_check_at=0;}
     return 1;
 }
 static int saver_save(const char *payload){
@@ -54,11 +60,16 @@ static void saver_icon(void){
     else if(strstr(c,"lightning")||!strcmp(c,"exceptional"))saver_icon_dy=6;
     else if(strstr(c,"rain")||strstr(c,"snow")||!strcmp(c,"pouring")||!strcmp(c,"hail")||!strcmp(c,"fog"))saver_icon_dy=9;
     saver_icon_dy+=SAVER_Y_OFFSET;
-    int sun=!strcmp(c,"sunny")||!strcmp(c,"partlycloudy"),night=!strcmp(c,"clear-night");
+    int clear=!strcmp(c,"sunny")||!strcmp(c,"clear-night");
+    int night=saver_night||!strcmp(c,"clear-night"),sun=!night&&(!strcmp(c,"sunny")||!strcmp(c,"partlycloudy"));
     if(sun){saver_disc(112,128,14,0xffc440);for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++)if(i||j)saver_stroke(112+i*21,128+j*21,112+i*25,128+j*25,1,0xffc440);}
-    if(night){saver_disc(120,135,23,0xf0df9a);saver_disc(130,126,22,0);saver_disc(145,116,2,0xffffff);}
+    if(night&&clear){saver_disc(120,135,23,0xf0df9a);saver_disc(130,126,22,0);saver_disc(145,116,2,0xffffff);}
+    else if(night&&strcmp(c,"unavailable")&&strcmp(c,"exceptional")){
+        /* Moon behind the weather; keep the existing date/temperature bands. */
+        saver_disc(108,124,14,0xf0df9a);saver_disc(115,119,12,0);saver_disc(143,122,1,0xffffff);
+    }
     if(!strcmp(c,"unavailable")){knob_line("--",160+SAVER_Y_OFFSET,30,110,0x80949e);return;}
-    if(sun&&!strcmp(c,"sunny"))return;if(night)return;
+    if(clear)return;
     if(!strcmp(c,"windy")||!strcmp(c,"windy-variant")){
         for(int i=0;i<3;i++)saver_stroke(90+i*4,125+i*10,148-i*5,125+i*10,2,0xaac9da);return;
     }

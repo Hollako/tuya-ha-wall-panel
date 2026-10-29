@@ -35,6 +35,22 @@ int main(void){
     int lit=0;for(int i=0;i<240*240;i++)if(knob_pixels[i])lit++;assert(lit>500);
     /* All advertised conditions draw safely through mirrored/bounded pixels. */
     for(size_t i=0;i<sizeof(saver_conditions)/sizeof(*saver_conditions);i++){strcpy(saver_condition,saver_conditions[i]);saver_icon();}
+    /* Every condition keeps its weather details at night, inside the icon band. */
+    for(size_t i=0;i<sizeof(saver_conditions)/sizeof(*saver_conditions);i++){
+        char frame[256];snprintf(frame,sizeof(frame),"10800\n24h\n%s-night\n28°C",saver_conditions[i]);
+        assert(saver_parse(frame,1)&&saver_night);
+        memset(knob_pixels,0,sizeof(knob_pixels));saver_icon();int count=0;
+        for(int y=0;y<240;y++)for(int x=0;x<240;x++)if(knob_pixels[y*240+x]){count++;assert(y>=120&&y<198);}
+        assert(count>0);
+    }
+    assert(saver_parse("10800\n24h\npartlycloudy-night\n28°C",1));
+    memset(knob_pixels,0,sizeof(knob_pixels));saver_icon();int moon=0,cloud=0;
+    for(int i=0;i<240*240;i++){assert(knob_pixels[i]!=knob_pack(0xffc440,255));moon+=knob_pixels[i]==knob_pack(0xf0df9a,255);cloud+=knob_pixels[i]==knob_pack(0xc6d9e5,255);}
+    assert(moon>0&&cloud>0);
+    assert(saver_parse("10800\n24h\npartlycloudy\n28°C",1)&&!saver_night);
+    memset(knob_pixels,0,sizeof(knob_pixels));saver_icon();int sunshine=0;
+    for(int i=0;i<240*240;i++)sunshine+=knob_pixels[i]==knob_pack(0xffc440,255);assert(sunshine>0);
+    assert(!saver_parse("10800\n24h\nUNKNOWN-night\n28°C",0));
     core_knob_activity_at(ms());assert(!core_knob_saver_draw());
     assert(!core_knob_command("screensaver","OFF"));assert(!saver_enabled);
     core_knob_activity_until=0;assert(!core_knob_activity_power(ms()));

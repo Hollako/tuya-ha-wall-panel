@@ -12,6 +12,8 @@ static int core_knob_ring=1;
 static int core_knob_speaker_muted,core_knob_page_muted;
 static void core_knob_mute_draw(void);
 static void core_knob_detail_draw(void);
+static int core_knob_art_draw(void);
+#define WP_KNOB_DRAW_MEDIA() core_knob_art_draw()
 #define WP_KNOB_DRAW_DETAIL() core_knob_detail_draw()
 #define WP_KNOB_DRAW_OVERLAY() core_knob_mute_draw()
 static int core_knob_saver_draw(void);
@@ -56,6 +58,7 @@ static int knob_notice(const char *format,...){
 static int core_knob_activity_enabled=1,core_knob_activity_last=-1,core_knob_led_physical=-1;
 static long long core_knob_activity_until;
 #include "knob-screensaver.h"
+#include "knob-artwork.h"
 static void core_knob_detail_draw(void){
     // Muted media uses the old status-line position for the symbol. Retain
     // any track title underneath it, with enough clearance from the volume.
@@ -146,6 +149,7 @@ static void core_knob_tick(void){
     }
 }
 static int core_knob_payload(const char *field,const char *payload){
+    if(!strcmp(field,"artwork"))return !strcmp(payload,"OFF")||(strlen(payload)==64&&strspn(payload,"0123456789abcdef")==64);
     if(!strcmp(field,"speaker_mute"))return !strcmp(payload,"ON")||!strcmp(payload,"OFF");
     if(!strcmp(field,"media_frame")){
         char b[512];if(strlen(payload)>=sizeof(b))return 0;strcpy(b,payload);
@@ -165,10 +169,12 @@ static int core_knob_payload(const char *field,const char *payload){
 }
 static int core_knob_command(const char *field,const char *payload){
     if(!core_config.knob_display||!knob_ready||!core_knob_payload(field,payload))return -1;
+    if(!strcmp(field,"artwork"))return core_knob_art_load(payload);
     if(!strcmp(field,"speaker_mute")){
         int muted=!strcmp(payload,"ON");if(muted!=core_knob_speaker_muted){core_knob_speaker_muted=muted;knob_dirty=1;knob_check_at=0;}return 0;
     }
     if(!strcmp(field,"media_frame")){
+        core_knob_media_page=1;
         char b[512];strcpy(b,payload);char *flag=strrchr(b,'\n');*flag++=0;
         int muted=!strcmp(flag,"ON");if(muted!=core_knob_page_muted){core_knob_page_muted=muted;knob_dirty=1;knob_check_at=0;}
         // Accept earlier HA media frames without displaying their textual mute label.
@@ -178,7 +184,7 @@ static int core_knob_command(const char *field,const char *payload){
         }}
         knob_command("/knob/display/frame/set",b,0);return 0;
     }
-    if(!strcmp(field,"frame")){if(core_knob_page_muted){core_knob_page_muted=0;knob_dirty=1;knob_check_at=0;}}
+    if(!strcmp(field,"frame")){core_knob_media_page=0;if(core_knob_page_muted){core_knob_page_muted=0;knob_dirty=1;knob_check_at=0;}}
     if(!strcmp(field,"screensaver")){if(saver_save(payload))return -1;saver_parse(payload,1);return 0;}
     if(!strcmp(field,"ring")){
         int enabled=!strcmp(payload,"ON");

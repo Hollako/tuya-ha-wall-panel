@@ -36,7 +36,11 @@ for name in ['nqptp-1.2.9','shairport-sync-5.6.1']:
   f.write_text(s)
   run('python3',root/'scripts/patch-mdns.py',d/'mdns_tinysvcmdns.c')
   run('python3',root/'scripts/patch-mdns-txt.py',d/'tinysvcmdns.c')
-  libs=shlex.quote(str(out/'wpar-shm.o'))+' -lgcrypt -lgpg-error -lsodium -lssl -lcrypto -lplist-2.0 -lxml2 -lconfig -lpopt -lavcodec -lavformat -lavutil -lswresample -luuid -lz -lm -lpthread'
+  run('python3',root/'scripts/patch-mdns-reliability.py',d)
+  shutil.copy2(root/'native/wpar-control.c',d/'wpar-control.c')
+  run('python3',root/'scripts/patch-control.py',d)
+  run('make','-o','config.status','-o','Makefile','-o','config.h','remote/remote.o','wpar-control.o',cwd=d)
+  libs=shlex.quote(str(out/'wpar-shm.o'))+' '+shlex.quote(str(d/'wpar-control.o'))+' '+shlex.quote(str(d/'remote/remote.o'))+' -lgcrypt -lgpg-error -lsodium -lssl -lcrypto -lplist-2.0 -lxml2 -lconfig -lpopt -lavcodec -lavformat -lavutil -lswresample -luuid -lz -lm -lpthread'
   (d/'shairport-sync').unlink(missing_ok=True)
   run('make','-o','config.status','-o','Makefile','-o','config.h','shairport-sync','LDFLAGS=-static -L'+stage+'/lib -Wl,--wrap=shm_open,--wrap=shm_unlink','LIBS='+libs,cwd=d)
   shutil.copy2(d/'shairport-sync',out/'shairport-sync')

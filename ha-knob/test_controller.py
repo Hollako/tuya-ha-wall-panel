@@ -7,6 +7,8 @@ from zoneinfo import ZoneInfo
 
 def module(name,**attrs):
     out=types.ModuleType(name);out.__dict__.update(attrs);sys.modules[name]=out;return out
+try:import aiohttp
+except ImportError:module('aiohttp',ClientTimeout=lambda **kw:kw,ClientError=type('ClientError',(Exception,),{}))
 for name in ['homeassistant','homeassistant.components','homeassistant.helpers','homeassistant.util']:
     module(name)
 mqtt=module('homeassistant.components.mqtt',async_publish=AsyncMock(),async_subscribe=AsyncMock(return_value=lambda:None))
@@ -15,6 +17,7 @@ module('homeassistant.const',Platform=types.SimpleNamespace(SELECT='select',SWIT
 module('homeassistant.helpers.entity',Entity=type('Entity',(),{}),DeviceInfo=lambda **kw:kw)
 module('homeassistant.exceptions',HomeAssistantError=type('HomeAssistantError',(Exception,),{}))
 module('homeassistant.helpers.event',async_track_state_change_event=lambda *a:lambda:None,async_track_time_interval=lambda *a:lambda:None)
+module('homeassistant.helpers.aiohttp_client',async_get_clientsession=lambda hass:None)
 class Store:
     def __init__(self,*args):pass
     async def async_load(self):return None
@@ -209,6 +212,33 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(mqtt.async_publish.await_args.args[2],'10800\n24h\nunavailable\n--')
         finally:await c.stop()
 
+    async def test_weather_day_night_variants_follow_sun_for_every_condition(self):
+        conditions=('sunny','clear-night','partlycloudy','cloudy','fog','rainy','pouring','snowy','snowy-rainy','hail','lightning','lightning-rainy','windy','windy-variant','exceptional')
+        for night in (False,True):
+            self.hass.values['sun.sun']=state('below_horizon' if night else 'above_horizon')
+            for condition in conditions:
+                self.hass.values['weather.a']=state(condition,temperature=28,temperature_unit='°C')
+                await self.c.render_screensaver()
+                expected=('clear-night' if night else 'sunny') if condition in ('sunny','clear-night') else condition+('-night' if night and condition!='exceptional' else '')
+                self.assertEqual(mqtt.async_publish.await_args.args[2].splitlines()[2],expected)
+        self.hass.values['weather.a']=state('unavailable')
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_args.args[2].splitlines()[2:5],['unavailable','--'])
+
+    async def test_weather_provider_phase_fallback_and_sunrise_refresh(self):
+        self.hass.values['weather.a']=state('partlycloudy',is_daytime=False,temperature=22)
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_args.args[2].splitlines()[2],'partlycloudy-night')
+        self.hass.values['sun.sun']=state('above_horizon')
+        await self.c.render_screensaver()
+        self.assertEqual(mqtt.async_publish.await_args.args[2].splitlines()[2],'partlycloudy')
+        count=mqtt.async_publish.await_count
+        self.hass.values['sun.sun']=state('below_horizon')
+        self.c._state_changed(types.SimpleNamespace(data={'entity_id':'sun.sun','new_state':self.hass.values['sun.sun']}))
+        await asyncio.sleep(0)
+        self.assertGreater(mqtt.async_publish.await_count,count)
+        self.assertEqual(mqtt.async_publish.await_args.args[2].splitlines()[2],'partlycloudy-night')
+
     async def test_frames_do_not_publish_follow_or_power(self):
         await self.c.render()
         self.assertTrue(all(call.args[1].endswith('/display/frame/set') for call in mqtt.async_publish.await_args_list))
@@ -260,10 +290,11 @@ class ControllerTests(unittest.IsolatedAsyncioTestCase):
     async def test_audio_invalid_state_does_not_replace_valid_state(self):
         import json
         valid={'state':'idle','source':'Android playback','volume':0.7,'muted':False}
+        expected={**valid,'source':'Local Playback'}
         self.c.audio._state(types.SimpleNamespace(payload=json.dumps(valid)))
-        self.assertEqual(self.c.audio.data,valid)
+        self.assertEqual(self.c.audio.data,expected)
         for patch in [{'volume':float('nan')},{'volume':2},{'muted':'false'},{'state':'garbage'},{'source':'unknown'}]:
             self.c.audio._state(types.SimpleNamespace(payload=json.dumps({**valid,**patch})))
-            self.assertEqual(self.c.audio.data,valid)
+            self.assertEqual(self.c.audio.data,expected)
 
 if __name__=='__main__':unittest.main(verbosity=2)

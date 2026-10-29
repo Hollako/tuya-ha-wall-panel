@@ -74,6 +74,12 @@ restore_backup(){
     done < "$restore/packages"
     read awake < "$restore/awake"
     case "$awake" in null) settings delete global stay_on_while_plugged_in ;; 0|1|2|3|4|5|6|7) settings put global stay_on_while_plugged_in "$awake" ;; *) return 1 ;; esac
+    if [ -f "$restore/accessibility-services" ];then
+        previous=$(cat "$restore/accessibility-services")
+        if [ "$previous" = null ];then settings delete secure enabled_accessibility_services;else settings put secure enabled_accessibility_services "$previous";fi
+        previous=$(cat "$restore/accessibility-enabled")
+        case "$previous" in null) settings delete secure accessibility_enabled ;; 0|1) settings put secure accessibility_enabled "$previous" ;; *) return 1 ;; esac
+    fi
     read home < "$restore/home"
     case "$home" in *[!A-Za-z0-9_./\$]*) : ;; */*) cmd package set-home-activity "$home" || true ;; esac
     while read service status;do
@@ -124,6 +130,8 @@ for file in $legacy;do test ! -f "$state/$file" || cp -p "$state/$file" "$backup
 for package in $packages;do enabled=$(package_state "$package");printf '%s %s\n' "$package" "${enabled:-absent}";done > "$backup/packages"
 for service in $services;do value=$(getprop "init.svc.$service");printf '%s %s\n' "$service" "${value:-absent}";done > "$backup/services"
 settings get global stay_on_while_plugged_in > "$backup/awake"
+settings get secure enabled_accessibility_services > "$backup/accessibility-services"
+settings get secure accessibility_enabled > "$backup/accessibility-enabled"
 cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME | tail -n 1 > "$backup/home"
 touch "$backup/complete-snapshot"
 printf '%s\n' "$$" > "$backup/apply.pid"
@@ -180,6 +188,14 @@ while read package enabled;do
     case "$enabled" in absent|3) : ;; *) pm disable-user --user 0 "$package";am force-stop "$package" ;; esac
 done < "$backup/packages"
 settings put global stay_on_while_plugged_in 7
+# A fixed settings-only Back button; preserve all other accessibility services.
+navigation=local.wallpanel.app/local.wallpanel.app.SettingsBackService
+previous=$(settings get secure enabled_accessibility_services)
+case "$previous" in null|'') previous= ;; esac
+case ":$previous:" in *":$navigation:"*|*":local.wallpanel.app/.SettingsBackService:"*) : ;; *)
+    settings put secure enabled_accessibility_services "${previous:+$previous:}$navigation" ;;
+esac
+settings put secure accessibility_enabled 1
 # Never relax /dev permissions. Root worker owns I/O; only its socket belongs to app.
 chmod 711 "$target"
 for file in wallpanel-core wallpanel-capture wallpanel-privilege wallpanel-system-ui.jar setup-panel.sh start-privilege.sh;do chown 0:0 "$target/$file";chmod 700 "$target/$file";done

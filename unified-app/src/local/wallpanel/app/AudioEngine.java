@@ -31,9 +31,18 @@ final class AudioEngine extends android.content.ContextWrapper {
     private MediaSession session;
     private volatile boolean running;
     private String source="Android playback", state="idle", title="", error="";
+    private boolean receiverLocalStopped;
     private boolean power=true, prepared=false;
     private int lastVolume=0,commandSeq=0;
     private VolumePolicy volumePolicy;
+    private double playerLevel=Double.NaN;
+    private void playerVolume(double value)throws Exception{
+        if(Double.isNaN(value)||Double.isInfinite(value)||value<0||value>1)throw new IllegalArgumentException("Invalid volume");
+        playerLevel=value;player.setVolume((float)value,(float)value);
+        getSharedPreferences("audio_player",MODE_PRIVATE).edit().putFloat("volume",(float)value).apply();
+        int maximum=audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);int index=value==0?0:Math.max(1,(int)Math.ceil(value*maximum));
+        volumePolicy.volume(maximum==0?0:(double)index/maximum);
+    }
     private java.lang.reflect.Method unmutedIndex;
     private String requestId="";
     private boolean intercomHeld,intercomResume;private String intercomState;private volatile int focusGeneration;
@@ -102,15 +111,23 @@ final class AudioEngine extends android.content.ContextWrapper {
         if(!chosen.equals("AirPlay"))ReceiverRuntime.stoppedLocally();
         VendorAudio.source(chosen.equals("Line Input"));
         releasePlayer();source=chosen;power=true;title="";error="";listener.hardware("audio power 1");
+        receiverLocalStopped=false;
         state=chosen.equals("Line Input")?"playing":"idle";
         com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(chosen.equals("AirPlay"));
     }
     boolean receiverStarted(){
+        if(com.wallpanel.multiroom.GroupRuntime.active())return false;
         if(!running||intercomHeld)return false;
         try{selectSource("AirPlay");state="playing";report();return true;}
         catch(Exception failed){error="Could not select AirPlay output";report();return false;}
     }
     void receiverEnded(){if(source.equals("AirPlay")){state="idle";title="";report();}}
+    boolean groupOutput(){
+        if(!running||intercomHeld||IntercomSession.active)return false;
+        try{releasePlayer();selectSource("Android playback");state="idle";return true;}
+        catch(Exception failed){error="Could not select group output";report();return false;}
+    }
+    void groupEnded(){state="idle";title="";if(intercomHeld){intercomState="idle";intercomResume=false;}report();}
     private void releasePlayer(){
         prepared=false;
         if(player!=null){try{player.release();}catch(Exception ignored){}player=null;}
@@ -122,21 +139,25 @@ final class AudioEngine extends android.content.ContextWrapper {
     private void play(){
         power=true;error="";
         listener.hardware("audio power 1");
-        if(source.equals("AirPlay")){com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(true);state=com.wallpanel.audioreceiver.ReceiverState.INSTANCE.isPlaying()?"playing":"idle";}
+        if(source.equals("AirPlay")){
+            if(com.wallpanel.audioreceiver.ReceiverRemote.request("play")){receiverLocalStopped=false;com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(true);}
+            else error=com.wallpanel.audioreceiver.ReceiverRemote.lastError();
+        }
         else if(source.equals("Line Input")){try{selectSource("Line Input");}catch(Exception failed){error="Cannot select AUX";}}
         else if(player!=null&&prepared){focus();player.start();state="playing";}
         else if(player==null){external(KeyEvent.KEYCODE_MEDIA_PLAY);}
         report();
     }
     private void pause(){
-        if(source.equals("AirPlay")){com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(false);state="paused";}
+        error="";
+        if(source.equals("AirPlay")){if(!com.wallpanel.audioreceiver.ReceiverRemote.request("pause"))error=com.wallpanel.audioreceiver.ReceiverRemote.lastError();}
         else if(source.equals("Line Input")){try{selectSource("Android playback");}catch(Exception failed){error="Cannot disconnect AUX";}}
         else if(player!=null&&prepared){player.pause();state="paused";}
         else external(KeyEvent.KEYCODE_MEDIA_PAUSE);
         report();
     }
     private void stop(){
-        if(source.equals("AirPlay")){com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(false);ReceiverRuntime.stoppedLocally();}
+        if(source.equals("AirPlay")){receiverLocalStopped=true;com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(false);ReceiverRuntime.stoppedLocally();}
         if(source.equals("Line Input"))try{selectSource("Android playback");}catch(Exception failed){error="Cannot disconnect AUX";report();return;}
         releasePlayer();state="idle";title="";error="";report();
     }
@@ -154,6 +175,8 @@ final class AudioEngine extends android.content.ContextWrapper {
         selectSource("Android playback");state="buffering";
         title=data.optString("title","Home Assistant audio");if(title.length()>100)title=title.substring(0,100);
         final MediaPlayer next=new MediaPlayer();player=next;
+        if(Double.isNaN(playerLevel)){double hardware=(double)volumePolicy.snapshot().index/Math.max(1,volumePolicy.snapshot().maximum);playerLevel=Math.min(hardware,getSharedPreferences("audio_player",MODE_PRIVATE).getFloat("volume",(float)hardware));}
+        next.setVolume((float)playerLevel,(float)playerLevel);
         next.setAudioStreamType(AudioManager.STREAM_MUSIC);
         next.setWakeMode(this,PowerManager.PARTIAL_WAKE_LOCK);
         next.setOnPreparedListener(new MediaPlayer.OnPreparedListener(){public void onPrepared(MediaPlayer mp){
@@ -175,6 +198,8 @@ final class AudioEngine extends android.content.ContextWrapper {
         if(!running)return;
         try{
             VolumePolicy.Snapshot snapshot=volumePolicy.snapshot();JSONObject command=new JSONObject();
+            if(com.wallpanel.multiroom.GroupRuntime.active())snapshot=new VolumePolicy.Snapshot(1000,(int)Math.round(com.wallpanel.multiroom.GroupRuntime.volume(this)*1000),com.wallpanel.multiroom.GroupRuntime.muted(this));
+            else if(player!=null)snapshot=new VolumePolicy.Snapshot(1000,(int)Math.round(playerLevel*1000),snapshot.muted||playerLevel==0);
             if(action.equals("up")||action.equals("down"))command.put("command","volume").put("value",LocalMediaKnob.volume(snapshot.index,snapshot.maximum,step,action.equals("up")));
             else if(action.equals("mute"))command.put("command","mute").put("value",!snapshot.muted);
             else if(action.equals("play_pause"))command.put("command","play_pause");
@@ -190,8 +215,15 @@ final class AudioEngine extends android.content.ContextWrapper {
             requestId=data.optString("request_id","");
             if(!requestId.matches("[A-Za-z0-9_-]{0,64}"))throw new IllegalArgumentException("Invalid request id");
             commandSeq++;
+            if(com.wallpanel.multiroom.GroupRuntime.active()){
+                if(cmd.equals("volume")){com.wallpanel.multiroom.GroupRuntime.volume(this,data.getDouble("value"));report();return;}
+                if(cmd.equals("mute")){com.wallpanel.multiroom.GroupRuntime.mute(this,data.getBoolean("value"));report();return;}
+                if(cmd.equals("play")||cmd.equals("pause")||cmd.equals("play_pause")){com.wallpanel.multiroom.GroupRuntime.transport(cmd);report();return;}
+                if(cmd.equals("next")||cmd.equals("previous"))throw new IllegalStateException("This group source has no track queue");
+                if(cmd.equals("stop")||cmd.equals("off")||cmd.equals("source")||cmd.equals("play_url"))com.wallpanel.multiroom.GroupRuntime.stop(this);
+            }
             if(cmd.equals("volume")){
-                volumePolicy.volume(data.getDouble("value"));
+                if(player!=null)playerVolume(data.getDouble("value"));else volumePolicy.volume(data.getDouble("value"));
             }else if(cmd.equals("receiver_delay")||cmd.equals("receiver_trim")){
                 Object rawValue=data.get("value");if(!(rawValue instanceof Number))throw new IllegalArgumentException("Invalid receiver level");
                 double rawNumber=((Number)rawValue).doubleValue();int value=(int)rawNumber;
@@ -227,14 +259,23 @@ final class AudioEngine extends android.content.ContextWrapper {
             else if(cmd.equals("play"))play();
             else if(cmd.equals("pause"))pause();
             else if(cmd.equals("play_pause")){
-                if(player==null&&source.equals("Android playback"))external(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
+                if(source.equals("AirPlay")){
+                    error="";
+                    if(!com.wallpanel.audioreceiver.ReceiverRemote.request("play_pause"))error=com.wallpanel.audioreceiver.ReceiverRemote.lastError();
+                    else if(receiverLocalStopped){receiverLocalStopped=false;com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(true);}
+                }
+                else if(player==null&&source.equals("Android playback"))external(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE);
                 else if(state.equals("playing")||state.equals("buffering"))pause();else play();
             }
-            else if(cmd.equals("stop")){if(player==null&&!source.equals("Line Input"))external(KeyEvent.KEYCODE_MEDIA_STOP);stop();}
+            else if(cmd.equals("stop")){if(player==null&&source.equals("Android playback"))external(KeyEvent.KEYCODE_MEDIA_STOP);stop();}
             else if(cmd.equals("off")){stop();power=false;listener.hardware("audio power 0");}
             else if(cmd.equals("on")){power=true;listener.hardware("audio power 1");}
-            else if(cmd.equals("next"))external(KeyEvent.KEYCODE_MEDIA_NEXT);
-            else if(cmd.equals("previous"))external(KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+            else if(cmd.equals("next")||cmd.equals("previous")){
+                if(source.equals("AirPlay")){
+                    error="";
+                    if(!com.wallpanel.audioreceiver.ReceiverRemote.request(cmd))error=com.wallpanel.audioreceiver.ReceiverRemote.lastError();
+                }else if(source.equals("Android playback"))external(cmd.equals("next")?KeyEvent.KEYCODE_MEDIA_NEXT:KeyEvent.KEYCODE_MEDIA_PREVIOUS);
+            }
             else if(cmd.equals("seek")){
                 double position=data.getDouble("value");if(position<0||position>2147483)throw new IllegalArgumentException("Invalid position");
                 if(player!=null&&prepared)player.seekTo((int)(position*1000));
@@ -249,12 +290,19 @@ final class AudioEngine extends android.content.ContextWrapper {
     }
     private void report(){
         try{
+            if(com.wallpanel.multiroom.GroupRuntime.active()&&!intercomHeld){state=com.wallpanel.multiroom.GroupRuntime.paused()?"paused":"playing";com.wallpanel.multiroom.GroupHub hub=com.wallpanel.multiroom.GroupHub.get();String song=hub==null?"":hub.playingTitle();title=song.isEmpty()?"Panel audio group":song;}
+            if(source.equals("AirPlay")&&!intercomHeld&&!receiverLocalStopped){
+                String actual=com.wallpanel.audioreceiver.ReceiverRemote.playback();
+                if(actual.equals("playing")||actual.equals("paused"))state=actual;
+            }
             boolean active=state.equals("playing")||state.equals("buffering");
             if(active&&!wake.isHeld())wake.acquire();else if(!active&&wake.isHeld())wake.release();
             VolumePolicy.Snapshot levels=volumePolicy.snapshot();
             int max=levels.maximum,volume=levels.index;
             boolean muted=levels.muted;
             lastVolume=volume;
+            if(com.wallpanel.multiroom.GroupRuntime.active()&&!intercomHeld){max=1000;volume=(int)Math.round(com.wallpanel.multiroom.GroupRuntime.volume(this)*1000);muted=com.wallpanel.multiroom.GroupRuntime.muted(this);}
+            else if(player!=null&&!intercomHeld){max=1000;volume=(int)Math.round(playerLevel*1000);muted=levels.muted||playerLevel==0;}
             JSONObject data=new JSONObject();data.put("state",power?state:"off");data.put("source",source);
             data.put("command_seq",commandSeq);
             data.put("request_id",requestId);data.put("audio_session",audioSession);data.put("volume_steps",max);
@@ -267,7 +315,9 @@ final class AudioEngine extends android.content.ContextWrapper {
             data.put("receiver_supported",android.os.Build.VERSION.SDK_INT>=27);
             data.put("receiver_enabled",receiverSettings.isEnabled());
             data.put("receiver_delay",receiverSettings.getLatencyOffsetMs());data.put("receiver_trim",receiverSettings.getVolumeTrim());
-            data.put("transport_control",source.equals("AirPlay")?"local_output_only":"player");
+            data.put("transport_control",source.equals("AirPlay")?"airplay_source":"player");
+            data.put("transport_available",com.wallpanel.audioreceiver.ReceiverRemote.available());
+            data.put("artwork_id",source.equals("AirPlay")?com.wallpanel.audioreceiver.ReceiverState.INSTANCE.getArtworkId():"");
             if(source.equals("AirPlay")){
                 com.wallpanel.audioreceiver.ReceiverState receiver=com.wallpanel.audioreceiver.ReceiverState.INSTANCE;
                 title=receiver.getTitle()==null?"":receiver.getTitle();
@@ -276,7 +326,9 @@ final class AudioEngine extends android.content.ContextWrapper {
             data.put("source_control","vendor_aux_mode");
             data.put("volume_scope","Android playback");
             data.put("external_speakers",VendorAudio.external());
-            data.put("volume",max==0?0:(double)volume/max);data.put("muted",muted);data.put("title",title);data.put("error",error);
+            data.put("volume",max==0?0:(double)volume/max);data.put("muted",muted);data.put("title",title);
+            String remoteError=source.equals("AirPlay")?com.wallpanel.audioreceiver.ReceiverRemote.lastError():"";
+            data.put("error",error.isEmpty()?remoteError:error);
             if(player!=null&&prepared){data.put("duration",player.getDuration()/1000.0);data.put("position",player.getCurrentPosition()/1000.0);}
             int st=state.equals("playing")?PlaybackState.STATE_PLAYING:state.equals("paused")?PlaybackState.STATE_PAUSED:state.equals("buffering")?PlaybackState.STATE_BUFFERING:PlaybackState.STATE_STOPPED;
             if(source.equals("Android playback")&&player!=null){

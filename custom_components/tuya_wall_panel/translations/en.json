@@ -39,7 +39,9 @@
           "buttons": "Button assignments and scenes",
           "order": "Page order",
           "dashboard": "Dashboard URL",
-          "screensaver": "Knob screensaver"
+          "screensaver": "Knob screensaver",
+          "group_network": "Audio groups connection",
+          "audio_groups": "Saved audio groups"
         }
       },
       "entities": {
@@ -98,15 +100,45 @@
           "screensaver_weather": "Weather entity",
           "clock_format": "Clock format"
         }
+      },
+      "group_network": {
+        "title": "Panel audio groups connection",
+        "description": "Enter any panel running the new group manager. HA mirrors its LAN room directory; playback and saved groups remain on panels. Use the API token configured in that panel Audio Receiver settings, if any.",
+        "data": {
+          "group_enabled": "Enable room and group controls",
+          "group_host": "Panel IP or hostname",
+          "group_port": "Panel API port",
+          "group_token": "Panel API token"
+        }
+      },
+      "audio_groups": {
+        "title": "Saved audio groups",
+        "description": "Create or edit a panel-owned group, recall it, or delete it. Saving a group does not start music. Choose each source panel audio file in the panel app first.",
+        "data": {
+          "saved_group": "Saved group",
+          "action": "Action"
+        }
+      },
+      "audio_group": {
+        "title": "Group rooms and source",
+        "data": {
+          "name": "Group name",
+          "leader": "Source room",
+          "members": "Rooms to include (source is included automatically)"
+        }
       }
     },
     "abort": {
-      "no_pages": "Choose control entities before arranging pages."
+      "no_pages": "Choose control entities before arranging pages.",
+      "group_not_configured": "Configure Audio groups connection first.",
+      "group_unavailable": "No panel rooms are available yet."
     },
     "error": {
       "invalid_entities": "Choose Climate, Light, Cover or Media Player entities.",
       "invalid_actions": "Choose at least one valid HA action for each Run HA actions assignment.",
-      "invalid_dashboard_url": "Enter an HTTP/HTTPS URL up to 255 characters, without spaces or embedded credentials. Leave blank to clear."
+      "invalid_dashboard_url": "Enter an HTTP/HTTPS URL up to 255 characters, without spaces or embedded credentials. Leave blank to clear.",
+      "group_unavailable": "Cannot connect to the panel group API. Check its IP, port, token and that the updated app is running.",
+      "group_command_failed": "The panel could not complete the command. Check its group page and room API credentials."
     }
   },
   "device_automation": {

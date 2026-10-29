@@ -6,13 +6,14 @@ android {
   namespace 'com.wallpanel.audioreceiver'
   compileSdk 34
   sourceSets.main.java.srcDir '../../../shared/audio-receiver/src'
+  sourceSets.main.java.srcDir '../../../shared/multiroom/src'
 
   defaultConfig {
     applicationId 'com.wallpanel.audioreceiver'
     minSdk 27
     targetSdk 27
-    versionCode 15
-    versionName '1.2.0'
+    versionCode 30
+    versionName '1.7.1'
 
     ndk {
       abiFilters 'arm64-v8a', 'armeabi-v7a'

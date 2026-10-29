@@ -5,7 +5,7 @@
     "arm64-v8a": {
       "shairport-sync": {
         "path": "airplay-app/build/native/shairport-sync",
-        "sha256": "cb9d261ed041b3386e366a6ae56db68a854134f50c70b650c5c8e0d7982534fb"
+        "sha256": "02cd4ef1f40ae6e9019394ec232e1dbe61e6dcc9537dab2b165ed164652f6cad"
       },
       "nqptp": {
         "path": "airplay-app/build/native/nqptp",
@@ -19,7 +19,7 @@
     "armeabi-v7a": {
       "shairport-sync": {
         "path": "airplay-app/build/native/armeabi-v7a/shairport-sync",
-        "sha256": "2e6cc60738fbab6d035fa538819284a3c9fdbd04bb144612bb0848a8a21d01d2"
+        "sha256": "cd965a378286078433758e5e30af438fae46ea051ba4241abbcafad2a7a794f8"
       },
       "nqptp": {
         "path": "airplay-app/build/native/armeabi-v7a/nqptp",

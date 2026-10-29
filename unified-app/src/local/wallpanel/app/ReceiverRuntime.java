@@ -53,6 +53,10 @@ final class ReceiverRuntime {
         if(!enabled(context)){context.stopService(new Intent(context,ReceiverService.class));return;}
         context.startForegroundService(new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_START));
     }
+    static void restartForWebSettings(Context context){
+        initialize(context);app.stopService(new Intent(app,ReceiverService.class));
+        main.postDelayed(new Runnable(){public void run(){reconcile(app);}},300);
+    }
     static void stoppedLocally(){pending=0;main.removeCallbacks(deferred);AudioOutputGate.INSTANCE.select(false);}
     static String status(){ReceiverState s=ReceiverState.INSTANCE;return s.getState().name()+(s.getErrorMessage()==null?"":" - "+s.getErrorMessage());}
     private ReceiverRuntime(){}
