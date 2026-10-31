@@ -8,14 +8,17 @@ out=r/'release';out.mkdir(exist_ok=True)
 readme='''Tuya HA Wall Panel - panel setup kit
 
 One APK supports ARM32 (armeabi-v7a) and ARM64 (arm64-v8a).
-Dashboard and SIP are available on the A133/Android 11 profile. A133 direct hardware
-controls remain disabled pending verification; its four relays and fb1 knob are
-not mapped using the G10 wiring. Do not use the G10 setup procedure on the A133.
+The tested A133/Android 11 ARM32 profile has a separate direct adapter: two
+physical relays, fb1 mirrored knob LCD, raw encoder input and Allwinner backlight.
+For this model use --profile a133. G10 wiring and codec controls are not reused.
+A133 ARM64 hardware is unverified and is refused by the native layout probe.
+End-to-end A133 unified-app activation, restoration and reboot tests remain pending.
 
 To install ONLY the app on an authorized ARM panel, without root or vendor changes:
    python bootstrap_panel.py --device PANEL_IP:5555 --app-only
 
-The full root/hardware setup below supports only verified G10/PX30 wiring.
+The full root/hardware setup defaults to verified G10/PX30 wiring.
+For A133 add --profile a133 to the installer command. Select A133 in app setup.
 The installer chooses ARM32/ARM64 payloads from the panel's supported ABI list.
 The APK includes Panel installation: check, prepare/repair and restore previous setup.
 If app-level root is available, Prepare requests root and installs support itself.
@@ -31,7 +34,9 @@ required. The APK cannot grant itself root or enable USB debugging.
 This checks wiring before APK installation, preserves existing app settings, installs
 the restricted root service and corrected system-shell startup, prepares private
 configuration, selects our Home app and disables only known conflicting G10 packages
-and old project services. Changes are backed up. It does not replace WebView, disable
+and old project services. The A133 setup only disables its explicit conflicting
+vendor UI packages; it preserves the Bluetooth/audio framework and kernel drivers.
+Changes are backed up. It does not replace WebView, disable
 system verification or SELinux, open device nodes to all apps, reboot or test outputs.
 Unknown hardware or insufficient root/system access stops setup.
 

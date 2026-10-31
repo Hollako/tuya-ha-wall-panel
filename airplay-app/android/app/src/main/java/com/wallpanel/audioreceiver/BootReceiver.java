@@ -12,8 +12,7 @@ public class BootReceiver extends BroadcastReceiver {
     } else if(Intent.ACTION_BOOT_COMPLETED.equals(action)||Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
       PrefStore prefs=new PrefStore(context);
       boolean boot=Intent.ACTION_BOOT_COMPLETED.equals(action);
-      if(prefs.isEnabled()&&(!boot||prefs.isAutostart()))
-        context.startForegroundService(new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_ENSURE_STARTED));
+      context.startForegroundService(new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_ENSURE_STARTED));
     }
   }
 }

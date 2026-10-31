@@ -57,7 +57,7 @@ public class PcmPump implements Runnable {
       clock = new PresentationClock(); submitted = 0; generation = nextGeneration;
       lastTimestampPoll = 0; previousUnderruns = 0; previousRoute = -1;
       final AudioTrack current=track;
-      outputSink=new AudioOutputGate.Sink(){public void audible(boolean value){if(current.setVolume(value?1f:0f)!=AudioTrack.SUCCESS)throw new IllegalStateException("Receiver output gate failed");}};
+      outputSink=new AudioOutputGate.Sink(){public void audible(boolean value){if(current.setVolume(value?com.wallpanel.multiroom.RoomVolume.gain():0f)!=AudioTrack.SUCCESS)throw new IllegalStateException("Receiver output gate failed");}};
       outputGate.bind(outputSink);
       track.play();
     }

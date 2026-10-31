@@ -40,6 +40,7 @@
     <service android:name="com.wallpanel.multiroom.GroupService" android:exported="false" />
     <activity android:name="com.wallpanel.multiroom.GroupSettingsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
     <activity android:name="com.wallpanel.multiroom.GroupManagerActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+    <activity android:name="com.wallpanel.audioreceiver.BluetoothConnectActivity" android:exported="false" />
 
     <receiver
       android:directBootAware="true"

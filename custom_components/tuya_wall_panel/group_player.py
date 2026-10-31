@@ -14,7 +14,7 @@ class RoomPlayer(GroupEntity,MediaPlayerEntity):
     _attr_volume_step=.01
     _attr_name="Room audio"
     _attr_device_class=MediaPlayerDeviceClass.SPEAKER
-    _attr_supported_features=FEATURES|MediaPlayerEntityFeature.GROUPING|MediaPlayerEntityFeature.PLAY_MEDIA|MediaPlayerEntityFeature.BROWSE_MEDIA|MediaPlayerEntityFeature.SELECT_SOURCE
+    _attr_supported_features=FEATURES|MediaPlayerEntityFeature.GROUPING|MediaPlayerEntityFeature.PLAY_MEDIA|MediaPlayerEntityFeature.BROWSE_MEDIA|MediaPlayerEntityFeature.SELECT_SOURCE|MediaPlayerEntityFeature.NEXT_TRACK|MediaPlayerEntityFeature.PREVIOUS_TRACK
     def __init__(self,controller,key):super().__init__(controller,key,"room","player")
     async def async_added_to_hass(self):
         await super().async_added_to_hass();self.groups.players[self.key]=self.entity_id
@@ -22,37 +22,52 @@ class RoomPlayer(GroupEntity,MediaPlayerEntity):
     @property
     def leader(self):return self.record.get("leader") or self.key
     @property
-    def state(self):return MediaPlayerState(self.record.get("state","idle"))
+    def state(self):return MediaPlayerState(self.record.get("state","idle") if self.record.get("active") else self.record.get("nowPlaying",{}).get("state","idle"))
     @property
     def volume_level(self):return whole_volume(self.record["volume"]) if self.record.get("volume") is not None else None
     @property
     def is_volume_muted(self):return self.record.get("muted")
     @property
     def group_members(self):
+        if not self.record.get("active"):return []
         keys=self.groups.members(self.leader)
         return [self.groups.players[k] for k in [self.leader]+[k for k in keys if k!=self.leader] if k in keys and k in self.groups.players]
     @property
-    def media_title(self):return self.groups.panels.get(self.leader,{}).get("sourceTitle") or ("Group source: "+self.groups.panels.get(self.leader,{}).get("name","this room") if self.record.get("active") else None)
+    def media_title(self):
+        node=self.groups.panels.get(self.leader,{}) if self.record.get("active") else self.record
+        return node.get("nowPlaying",{}).get("title") or (node.get("sourceTitle") if self.record.get("active") else None)
     @property
-    def extra_state_attributes(self):return {key:self.record.get(key) for key in ("id","leader","role","connected","status","roomDelayMs","sourceConfigured","sourceKind","bluetoothGroupAvailable","captureStatus")}
+    def extra_state_attributes(self):return {key:self.record.get(key) for key in ("id","leader","role","connected","status","roomDelayMs","sourceConfigured","sourceKind","bluetoothGroupAvailable","appAudioGroupAvailable","captureStatus")}
     @property
-    def source(self):return "Group stream" if self.record.get("active") and self.leader!=self.key else "Bluetooth" if self.record.get("sourceKind")=="bluetooth" else "Local music"
+    def source(self):
+        if self.record.get("active") and self.leader!=self.key:return "Group stream"
+        kind=self.record.get("sourceKind") if self.record.get("active") else self.record.get("nowPlaying",{}).get("kind")
+        return {"bluetooth":"Bluetooth","apps":"App audio","airplay":"AirPlay","local":"Local Playback"}.get(kind,"Local music")
     @property
-    def source_list(self):return ["Local music"]+(["Bluetooth"] if self.record.get("bluetoothGroupAvailable") else [])+(["Group stream"] if self.record.get("active") and self.leader!=self.key else [])
+    def source_list(self):return list(dict.fromkeys(["Local music"]+(["Bluetooth"] if self.record.get("bluetoothGroupAvailable") else [])+(["App audio"] if self.record.get("appAudioGroupAvailable") else [])+([self.source] if self.source in ("Group stream","AirPlay","Local Playback") else [])))
     async def async_select_source(self,source):
-        if source=="Group stream" and self.source==source:return
-        if source not in ("Local music","Bluetooth"):raise HomeAssistantError("Choose an available group input")
-        await self.groups.command("group_input",leader=self.key,input="bluetooth" if source=="Bluetooth" else "file",members=self.groups.members(self.leader) or [self.key])
+        if source in ("Group stream","AirPlay","Local Playback") and self.source==source:return
+        if source not in ("Local music","Bluetooth","App audio"):raise HomeAssistantError("Choose an available group input")
+        await self.groups.command("group_input",leader=self.key,input={"Bluetooth":"bluetooth","App audio":"apps","Local music":"file"}[source],members=self.groups.members(self.leader) or [self.key])
     async def async_set_volume_level(self,volume):await self.groups.command("room",target=self.key,volume=whole_volume(volume))
     async def async_mute_volume(self,mute):await self.groups.command("room",target=self.key,muted=mute)
     async def async_media_play(self):
-        if self.record.get("active"):await self.groups.command("transport",leader=self.leader,command="play")
-        else:await self.groups.command("set_group",leader=self.key,members=[self.key])
-    async def async_media_pause(self):await self.groups.command("transport",leader=self.leader,command="pause")
+        await self._transport("play")
+    async def async_media_pause(self):await self._transport("pause")
+    async def _transport(self,verb):
+        await self.groups.command("smart_play",leader=self.leader if self.record.get("active") else self.key,
+            members=self.groups.members(self.leader) or [self.key],command=verb)
+    async def _skip(self,verb):
+        leader=self.leader if self.record.get("active") else self.key
+        kind=self.groups.panels.get(leader,{}).get("nowPlaying",{}).get("kind")
+        if kind not in ("airplay","bluetooth","apps","local"):raise HomeAssistantError("This source does not support next/previous track")
+        await self.groups.command("media_transport",leader=leader,kind=kind,command=verb)
+    async def async_media_next_track(self):await self._skip("next")
+    async def async_media_previous_track(self):await self._skip("previous")
     async def async_media_stop(self):await self.groups.command("leave",target=self.key)
     async def async_join_players(self,group_members):
         members=list(dict.fromkeys(self.groups.members(self.leader)+[self.leader]+self.groups.room_ids(group_members)))
-        await self.groups.command("set_group",leader=self.leader,members=members)
+        await self.groups.command("set_group" if self.record.get("active") else "smart_play",leader=self.leader,members=members)
     async def async_unjoin_player(self):await self.groups.command("leave",target=self.key)
     async def async_play_media(self,media_type,media_id,**kwargs):
         from .group_library import play
@@ -105,9 +120,9 @@ class SavedGroupPlayer(GroupEntity,MediaPlayerEntity):
         from .group_library import play
         await play(self,self.record["leader"],self.record["members"],media_id,kwargs)
     @property
-    def source(self):return "Bluetooth" if self.groups.panels.get(self.record.get("leader"),{}).get("sourceKind")=="bluetooth" else "Local music"
+    def source(self):return {"bluetooth":"Bluetooth","apps":"App audio"}.get(self.groups.panels.get(self.record.get("leader"),{}).get("sourceKind"),"Local music")
     @property
-    def source_list(self):return ["Local music"]+(["Bluetooth"] if self.groups.panels.get(self.record.get("leader"),{}).get("bluetoothGroupAvailable") else [])
+    def source_list(self):return ["Local music"]+(["Bluetooth"] if self.groups.panels.get(self.record.get("leader"),{}).get("bluetoothGroupAvailable") else [])+(["App audio"] if self.groups.panels.get(self.record.get("leader"),{}).get("appAudioGroupAvailable") else [])
     async def async_select_source(self,source):
-        if source not in ("Local music","Bluetooth"):raise HomeAssistantError("Choose Local music or Bluetooth")
-        await self.groups.command("group_input",leader=self.record["leader"],input="bluetooth" if source=="Bluetooth" else "file",members=self.record["members"])
+        if source not in ("Local music","Bluetooth","App audio"):raise HomeAssistantError("Choose Local music, Bluetooth or App audio")
+        await self.groups.command("group_input",leader=self.record["leader"],input={"Bluetooth":"bluetooth","App audio":"apps","Local music":"file"}[source],members=self.record["members"])

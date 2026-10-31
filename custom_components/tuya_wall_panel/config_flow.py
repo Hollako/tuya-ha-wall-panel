@@ -50,6 +50,9 @@ class KnobOptionsFlow(config_entries.OptionsFlowWithReload):
     async def async_step_group_network(self,user_input=None):
         from .groups import directory
         errors={};values={**self.values(),**(user_input or {})}
+        if user_input is None and getattr(self.config_entry,"runtime_data",None):
+            groups=self.config_entry.runtime_data.groups
+            if groups.enabled:values.update(group_host=groups.connection[0],group_port=groups.connection[1])
         if user_input is not None:
             try:
                 if user_input["group_enabled"]:await directory(self.hass,user_input["group_host"].strip(),int(user_input["group_port"]),user_input.get("group_token",""))

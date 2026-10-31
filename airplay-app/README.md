@@ -1,5 +1,9 @@
 # Wall Panel Audio Receiver
 
+Local controls update **1.9.1** shares its web/app settings, single Play/Pause and room
+volume with unified **0.32.2**. The pairing and Android Bluetooth buttons are inside
+Bluetooth settings. See [the controls release notes](../unified-app/SETTINGS_AND_AUDIO_0_32.md).
+
 Android AirPlay 2 receiver for the G10 (Android 8.1 ARM64) and A133 (Android 11 ARM32). Package: com.wallpanel.audioreceiver. Local build: 1.1.0 (code 7); installed devices remain on 1.0.5. Version 1.1.0 adds measured Android output feedback and a live per-panel timing slider. Two-device acoustic synchronization/endurance validation is pending.
 
 Read [STATUS.md](STATUS.md) first. It distinguishes observed playback from unverified AP2/multiroom behavior.

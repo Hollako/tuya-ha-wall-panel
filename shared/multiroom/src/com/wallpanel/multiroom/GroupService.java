@@ -15,13 +15,10 @@ public final class GroupService extends Service {
  volatile boolean running,paused,connected,sourceFinished;private volatile boolean closing,callHeld;private boolean preparedOutput;private String role,leader,id;private int bufferMs;volatile int roomDelay;
  private volatile Process server,client;private volatile GroupDecoder decoder;private volatile BluetoothGroupSource bluetooth;private AudioOutputGate.Lease airplayLease;
  private PowerManager.WakeLock wake;private android.net.wifi.WifiManager.WifiLock wifi;private final Handler main=new Handler();private final ExecutorService work=Executors.newSingleThreadExecutor();
- private volatile int volumeGeneration;private boolean volumeAfterCall;
- void applyVolume(double value){final int generation=++volumeGeneration;main.post(()->{
-  if(closing)return;if(GroupRuntime.intercom()){volumeAfterCall=true;return;}android.media.AudioManager audio=(android.media.AudioManager)getSystemService(AUDIO_SERVICE);
-  if(value==0){audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,android.media.AudioManager.ADJUST_MUTE,0);return;}
-  // Let the native software gain settle before changing Android's coarser step.
-  main.postDelayed(()->{if(closing||generation!=volumeGeneration||GroupRuntime.intercom())return;int index=Math.max(1,(int)Math.ceil(value*audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)));audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,index,0);audio.adjustStreamVolume(android.media.AudioManager.STREAM_MUSIC,android.media.AudioManager.ADJUST_UNMUTE,0);},60);
- });}
+ private boolean volumeAfterCall,sourceWaiting;
+ private GroupReconnect reconnect;
+ void recovery(final boolean value){main.post(()->{if(bluetooth!=null)bluetooth.recovery(value);});}
+ void applyVolume(double value){main.post(()->{if(closing)return;if(GroupRuntime.intercom()){volumeAfterCall=true;return;}try{RoomVolume.apply();}catch(IOException error){GroupRuntime.status("Cannot apply room volume");}});}
  @Override public IBinder onBind(Intent intent){return null;}
  @Override public void onCreate(){super.onCreate();GroupRuntime.service=this;
   NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);manager.createNotificationChannel(new NotificationChannel("wallpanel_groups","Group playback",NotificationManager.IMPORTANCE_LOW));
@@ -32,12 +29,16 @@ public final class GroupService extends Service {
   try{
    if(GroupRuntime.intercom())throw new IllegalStateException("End the intercom call first");
    SharedPreferences preferences=getSharedPreferences("wallpanel_groups",MODE_PRIVATE);role=GroupPolicy.role(preferences.getString("role","receiver"));leader=role.equals("leader")?"127.0.0.1":GroupPolicy.host(preferences.getString("leader",""));
+   if(!role.equals("leader"))reconnect=new GroupReconnect(preferences.getString("group_leader",""),leader);
    bufferMs=GroupPolicy.buffer(preferences.getInt("buffer_ms",2000));roomDelay=GroupPolicy.roomDelay(preferences.getInt("room_delay_ms",0));
    GroupRuntime.roomTiming(this,roomDelay);
    id=preferences.getString("id","");if(id.isEmpty()){id="panel-"+UUID.randomUUID().toString();preferences.edit().putString("id",id).apply();}
+   boolean appsSource=role.equals("leader")&&preferences.getString("source_kind","file").equals("apps");
    boolean bluetoothSource=role.equals("leader")&&preferences.getString("source_kind","file").equals("bluetooth");
+   boolean capturedSource=bluetoothSource||appsSource;
+   if(appsSource&&!BluetoothGroupSource.appsAvailable())throw new IllegalStateException("Prepare the app audio group bridge first");
    if(bluetoothSource&&!BluetoothGroupSource.available())throw new IllegalStateException("Prepare the Bluetooth group bridge first");
-   String url=role.equals("leader")&&!bluetoothSource?GroupPolicy.source(preferences.getString("source","")):"";
+   String url=role.equals("leader")&&!capturedSource?GroupPolicy.source(preferences.getString("source","")):"";
    if(!GroupRuntime.prepare())throw new IllegalStateException("Start the panel audio hardware first");
    preparedOutput=true;
    GroupRuntime.initializeVolume(this,GroupRuntime.volume(this));
@@ -49,9 +50,9 @@ public final class GroupService extends Service {
     GroupDecoder.Sink sink=new GroupDecoder.Sink(){
      public Socket open(int rate,int channels)throws Exception{return startLeader(rate,channels);}
      public void complete(){sourceFinished=true;GroupRuntime.status("Source finished. Stop and start the group to replay or choose another source.");}
-     public void error(Exception error){failed(bluetoothSource?"Bluetooth capture failed; check bridge status and Bluetooth connection":"Cannot play group source ("+error.getClass().getSimpleName()+")");}
-    };if(bluetoothSource){bluetooth=new BluetoothGroupSource(sink);work.execute(bluetooth);}else{decoder=new GroupDecoder(this,url,sink);work.execute(decoder);}
-   }else work.execute(()->{try{startClient();}catch(Exception error){failed("Cannot start group receiver");}});
+     public void error(Exception error){failed(capturedSource?"Media capture failed; check the capture bridge and source app":"Cannot play group source ("+error.getClass().getSimpleName()+")");}
+    };if(capturedSource){bluetooth=new BluetoothGroupSource(sink,appsSource);bluetooth.recovery(getSharedPreferences("wpar_prefs",MODE_PRIVATE).getBoolean("bt_handoff_recovery",true));work.execute(bluetooth);}else{decoder=new GroupDecoder(this,url,sink);work.execute(decoder);}
+   }else work.execute(()->{try{startClient();}catch(Exception error){main.post(()->retryReceiver("Cannot start group receiver"));}});
    main.post(tick);
   }catch(Exception error){GroupRuntime.status(error.getMessage());stopSelf();}
   return START_NOT_STICKY;
@@ -69,7 +70,7 @@ public final class GroupService extends Service {
   try{int latency=((Number)android.media.AudioManager.class.getMethod("getOutputLatency",Integer.TYPE).invoke(audio,android.media.AudioManager.STREAM_MUSIC)).intValue();if(latency>=0&&latency<=500)builder.environment().put("OUTPUT_LATENCY_MS",Integer.toString(latency));}catch(Exception ignored){}
   builder.redirectErrorStream(true);return builder.start();
  }
- private void observe(Process process,String name){new Thread(()->{try(BufferedReader reader=new BufferedReader(new InputStreamReader(process.getInputStream()))){String line;while((line=reader.readLine())!=null&&!closing){android.util.Log.i("WallPanelGroup",name+": "+(line.length()>512?line.substring(0,512):line));if(name.equals("receiver")){if(line.contains("Reconnecting"))connected=false;if(line.contains("ServerSettings - buffer:")){connected=true;GroupRuntime.status("Connected to "+(role.equals("leader")?"this panel's group":leader)+". Playback timing is managed by the group engine.");}}}}catch(IOException ignored){}},"group-"+name+"-log").start();}
+ private void observe(Process process,String name){new Thread(()->{try(BufferedReader reader=new BufferedReader(new InputStreamReader(process.getInputStream()))){String line;while((line=reader.readLine())!=null&&!closing){android.util.Log.i("WallPanelGroup",name+": "+(line.length()>512?line.substring(0,512):line));if(name.equals("receiver")&&process==client){if(line.contains("Reconnecting"))connected=false;if(line.contains("ServerSettings - buffer:")){connected=true;GroupRuntime.status("Connected to "+(role.equals("leader")?"this panel's group":leader)+". Playback timing is managed by the group engine.");}}}}catch(IOException ignored){}},"group-"+name+"-log").start();}
  private Socket startLeader(int rate,int channels)throws Exception{
   if(closing)throw new IOException("Stopped");File data=new File(getFilesDir(),"group-server");data.mkdirs();
   String source="tcp://127.0.0.1:"+INPUT_PORT+"?name=Panel&mode=server&sampleformat="+GroupPolicy.format(rate,channels)+"&codec=pcm";
@@ -85,12 +86,25 @@ public final class GroupService extends Service {
   client=launch("libwpar_groupclient.so","--player","oboe","--latency",GroupPolicy.clientLatency(roomDelay),"--hostID",id,"tcp://"+leader+":"+STREAM_PORT);observe(client,"receiver");
  }
  private synchronized void stopClient(){connected=false;Process process=client;client=null;if(process!=null)process.destroy();}
+ private void retryReceiver(String message){if(closing||reconnect==null)return;stopClient();reconnect.failed(SystemClock.elapsedRealtime());GroupRuntime.status(message+"; waiting to reconnect to "+leader);}
+ void followLeader(String peerId,String address){main.post(()->{
+  if(closing||reconnect==null)return;
+  try{if(!reconnect.confirmed(peerId,address))return;}catch(IllegalArgumentException invalid){return;}
+  leader=reconnect.host();getSharedPreferences("wallpanel_groups",MODE_PRIVATE).edit().putString("leader",leader).apply();
+  stopClient();GroupRuntime.status("Leader address updated; reconnecting to "+leader);
+ });}
+ void networkChanged(){main.post(()->{if(closing||reconnect==null)return;stopClient();reconnect.connected();GroupRuntime.status("Network changed; reconnecting to "+leader);});}
  private final Runnable tick=new Runnable(){public void run(){
   if(closing)return;boolean call=GroupRuntime.intercom();
-  if(call&&!callHeld){callHeld=true;stopClient();GroupRuntime.status("This room is silenced for intercom; the group continues.");}
-  else if(!call&&callHeld){callHeld=false;try{startClient();if(volumeAfterCall){volumeAfterCall=false;applyVolume(GroupRuntime.outputVolume(GroupService.this));}}catch(Exception error){failed("Cannot resume this room after intercom");}}
+  if(call&&!callHeld){callHeld=true;if(bluetooth!=null)bluetooth.holdRecovery(true);stopClient();GroupRuntime.status("This room is silenced for intercom; the group continues.");}
+  else if(!call&&callHeld){callHeld=false;if(bluetooth!=null)bluetooth.holdRecovery(false);try{startClient();if(volumeAfterCall){volumeAfterCall=false;applyVolume(GroupRuntime.outputVolume(GroupService.this));}}catch(Exception error){if(reconnect!=null)retryReceiver("Cannot resume this room after intercom");else failed("Cannot resume this room after intercom");}}
+  if(bluetooth!=null&&bluetooth.bluetooth()&&!paused&&!callHeld){boolean waiting=MediaActivity.bluetoothStalled();if(waiting!=sourceWaiting){sourceWaiting=waiting;GroupRuntime.status(waiting?"Waiting for Bluetooth audio; checking the source stream":"Group source playing");}}
   if(server!=null&&!server.isAlive()){failed("Group leader stopped unexpectedly");return;}
-  if(!callHeld&&!(paused&&!role.equals("leader"))&&client!=null&&!client.isAlive()){failed("Group receiver stopped unexpectedly");return;}
+  if(reconnect!=null){
+   if(client!=null&&!client.isAlive())retryReceiver("Group receiver disconnected");
+   else if(connected)reconnect.connected();
+   if(!callHeld&&!paused&&client==null&&reconnect.due(SystemClock.elapsedRealtime()))try{startClient();}catch(IOException error){retryReceiver("Cannot reconnect group receiver");}
+  }else if(!callHeld&&client!=null&&!client.isAlive()){failed("Group receiver stopped unexpectedly");return;}
   main.postDelayed(this,200);
  }};
  void transport(String command){main.post(()->{
@@ -98,7 +112,7 @@ public final class GroupService extends Service {
   boolean next=command.equals("pause")||command.equals("play_pause")&&!paused;
   if(!command.equals("play")&&!command.equals("pause")&&!command.equals("play_pause"))return;
   paused=next;if(decoder!=null)decoder.paused=next;if(bluetooth!=null)bluetooth.pause(next);
-  if(!role.equals("leader")){if(next)stopClient();else try{startClient();}catch(Exception error){failed("Cannot resume group receiver");}}
+  if(!role.equals("leader")){if(next)stopClient();else try{startClient();}catch(Exception error){retryReceiver("Cannot resume group receiver");}}
   GroupRuntime.status(next?(role.equals("leader")?"Group source paused":"This room paused"):(role.equals("leader")?"Group source playing":"Connecting to group…"));
  });}
  private void failed(String message){if(closing)return;GroupRuntime.status(message);main.post(this::stopSelf);}

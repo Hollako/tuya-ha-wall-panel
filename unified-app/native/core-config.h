@@ -9,6 +9,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 struct core_config {char device_id[49];int buttons,relays;int bindings[4][2];int knob_input,knob_display,audio,amplifier,display;};
+#ifndef WP_CORE_PROFILE
+#define WP_CORE_PROFILE "g10"
+#endif
 static int core_config_read(const char *path,struct core_config *out){
     int fd=open(path,O_RDONLY|O_CLOEXEC|O_NOFOLLOW);if(fd<0)return -1;
     struct stat st;
@@ -22,7 +25,7 @@ static int core_config_read(const char *path,struct core_config *out){
         char *value=strchr(line,'=');if(!value){bad=1;break;}*value++=0;
         unsigned bit=0;
         if(!strcmp(line,"version")){bit=1;if(strcmp(value,"1"))bad=1;}
-        else if(!strcmp(line,"profile")){bit=2;if(strcmp(value,"g10"))bad=1;}
+        else if(!strcmp(line,"profile")){bit=2;if(strcmp(value,WP_CORE_PROFILE))bad=1;}
         else if(!strcmp(line,"device_id")){
             bit=4;size_t length=strlen(value);if(!length||length>=sizeof(c.device_id))bad=1;
             for(size_t i=0;i<length;i++)if(!((value[i]>='a'&&value[i]<='z')||(value[i]>='0'&&value[i]<='9')||value[i]=='_'))bad=1;
@@ -54,6 +57,10 @@ static int core_config_read(const char *path,struct core_config *out){
         if(!bit||(seen&bit)||bad){bad=1;break;}seen|=bit;
     }
     if(ferror(f))bad=1;fclose(f);
+#ifdef WP_A133
+    if(c.buttons)bad=1;
+    for(int b=0;b<4;b++)for(int g=0;g<2;g++)if(c.bindings[b][g])bad=1;
+#endif
     if(bad||(seen&31)!=31)return -1;*out=c;return 0;
 }
 #endif

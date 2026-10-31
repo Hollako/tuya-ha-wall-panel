@@ -13,6 +13,14 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     static boolean receiverStarted(){BridgeService s=instance;return s!=null&&s.audioEngine!=null&&s.audioEngine.receiverStarted();}
     static void receiverEnded(){BridgeService s=instance;if(s!=null&&s.audioEngine!=null)s.audioEngine.receiverEnded();}
     private static volatile BridgeService instance;private long intercomWake;
+    static JSONObject localAudioState(){BridgeService s=instance;if(s==null||s.audioState==null)return null;try{return new JSONObject(s.audioState.toString()).put("itemAvailable",s.audioEngine!=null&&s.audioEngine.hasLocalItem());}catch(Exception invalid){return null;}}
+    static void localAudioControl(String command)throws Exception{BridgeService s=instance;if(s==null||s.audioEngine==null)throw new IllegalStateException("Start panel audio hardware first");s.audioCommand(new JSONObject().put("command",command).toString());}
+    static void webAudio(JSONObject command)throws Exception{BridgeService s=instance;if(s==null||s.audioEngine==null)throw new IllegalStateException("Start panel audio hardware first");s.audioCommand(command.toString());}
+    private volatile JSONObject webDisplay=new JSONObject();private final java.util.concurrent.ConcurrentHashMap<String,String> webKnob=new java.util.concurrent.ConcurrentHashMap<>();
+    static JSONObject displayOptions(){BridgeService s=instance;return s==null?new JSONObject():s.webDisplay;}
+    static String knobOption(String key,String fallback){BridgeService s=instance;String value=s==null?null:s.webKnob.get(key);return value==null?fallback:value;}
+    static boolean hardwareRunning(){BridgeService s=instance;return s!=null&&s.worker!=null&&s.worker.isRunning();}
+    static void webSetting(String suffix,String payload)throws Exception{BridgeService s=instance;if(s==null||s.worker==null||!s.worker.isRunning())throw new IllegalStateException("Start the panel hardware first");MqttSession.Message m=new MqttSession.Message(s.config.mqttBase+suffix,payload,false);String op=DisplayTopics.command(s.config,m);if(op==null)op=KnobTopics.command(s.config,m);if(op==null)op=HardwareTopics.command(s.config,m);if(op==null)op=ManagementPolicy.command(s.config,m);if(op==null||!s.worker.send(op))throw new IllegalStateException("Setting is unavailable on this hardware");}
     static Boolean beginIntercom(){BridgeService s=instance;if(s==null)return null;Boolean power=s.audioEngine==null?null:Boolean.valueOf(s.audioEngine.powered());if(s.audioEngine!=null)s.audioEngine.beginIntercom();if(s.worker!=null&&s.config!=null){if(s.config.selected.contains("amplifier"))s.worker.send("audio power 1");if(s.config.selected.contains("display"))s.worker.send("display power 1");}return power;}
     static void endIntercom(Boolean power){BridgeService s=instance;if(s==null)return;if(s.audioEngine!=null)s.audioEngine.endIntercom();if(power!=null&&s.worker!=null&&s.config!=null&&s.config.selected.contains("amplifier"))s.worker.send("audio power "+(power.booleanValue()?1:0));}
     public static final String STOP="local.wallpanel.app.STOP_HARDWARE";
@@ -39,11 +47,14 @@ public final class BridgeService extends Service implements NativeWorker.Listene
     private long started;
     private boolean initialized;private volatile int workerGeneration;private int retryDelay=5000;private PowerManager.WakeLock cpu;
     private MqttSession presenceSession;private boolean presenceOnline;
+    private MqttSession endpointSession;private String endpointPayload;private long endpointSent;
+    private MqttSession groupSession;private String groupPayload;
     private String recoveryReason;
     private java.util.Timer transportDeadline;
     private final Handler handler=new Handler();
     private final Runnable watchdog=new Runnable(){public void run(){
         if(stopping)return;MqttSession session=mqtt;if(session!=null)session.checkWriteDeadline();
+        announceGroupEndpoint(false);
         boolean complete=ready&&(!config.selected.contains("audio")||audioOnline);
         if(worker!=null&&ActivationPolicy.timedOut(verified,complete,mqttOnline,android.os.SystemClock.elapsedRealtime()-started))failed("Hardware startup timed out");
         handler.postDelayed(this,1000);
@@ -70,14 +81,14 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             }catch(Exception e){store.runtimeStatus("Stop hardware before changing connection/profile");}
             return START_STICKY;
         }
-        try{config=store.load();config.validate();config.validateBroker();HardwareTopics.base(config.mqttBase);if(!"g10".equals(config.profile))throw new IllegalArgumentException("Select G10 first");}
+        try{config=store.load();config.validate();config.validateBroker();HardwareTopics.base(config.mqttBase);if(!"g10".equals(config.profile)&&!"a133".equals(config.profile))throw new IllegalArgumentException("Select G10 or A133 first");}
         catch(Exception e){store.runtimeStatus("Cannot start hardware: check saved profile and MQTT settings");store.setRuntimeEnabled(false);stopSelf();return START_NOT_STICKY;}
         if(!store.runtimeEnabled()){stopSelf();return START_NOT_STICKY;}
         NotificationManager notifications=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);
         Notification.Builder notice;
         if(Build.VERSION.SDK_INT>=26){notifications.createNotificationChannel(new NotificationChannel("wallpanel_hardware","Wall Panel hardware",NotificationManager.IMPORTANCE_LOW));notice=new Notification.Builder(this,"wallpanel_hardware");}else notice=new Notification.Builder(this);
         PendingIntent setup=PendingIntent.getActivity(this,0,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT);
-        startForeground(41,notice.setSmallIcon(android.R.drawable.ic_menu_manage).setContentTitle("Tuya HA Wall Panel").setContentText("Wall Panel hardware and audio").setOngoing(true).setContentIntent(setup).build());
+        startForeground(41,notice.setSmallIcon(android.R.drawable.ic_menu_manage).setContentTitle("SmartWay Panel").setContentText("Wall Panel hardware and audio").setOngoing(true).setContentIntent(setup).build());
         stopping=false;verified=store.runtimeVerified();started=android.os.SystemClock.elapsedRealtime();store.runtimeStatus("Starting hardware worker…");
         initialized=true;PowerManager power=(PowerManager)getSystemService(POWER_SERVICE);cpu=power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wallpanel:hardware");cpu.setReferenceCounted(false);cpu.acquire();
         transportDeadline=new java.util.Timer("wallpanel-transport-deadline",true);transportDeadline.schedule(new java.util.TimerTask(){public void run(){MqttSession current=mqtt;if(current!=null)current.checkWriteDeadline();}},1000,1000);
@@ -99,12 +110,13 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             try{
                 String base=config.mqttBase;
                 String client="wp-"+config.deviceId.replace("wp_","");if(client.length()>23)client=client.substring(0,23);
-                session.open(config,client,base+"/availability",new String[]{base+"/relay/+/set",base+"/button/+/binding/set",base+"/app/command/set",base+"/app/dashboard/set",base+"/knob/display/+/set",base+"/knob/media/set",base+"/knob/led/color/set",base+"/audio/command/set",base+"/audio/hardware_level/set",base+"/device/command/set",base+"/device/brightness/set",base+"/display/policy/+/set","homeassistant/status"});
+                session.open(config,client,base+"/availability",new String[]{base+"/relay/+/set",base+"/button/+/binding/set",base+"/app/command/set",base+"/app/dashboard/set",base+"/app/group_state/get",base+"/knob/display/+/set",base+"/knob/media/set",base+"/knob/led/color/set",base+"/audio/command/set",base+"/audio/hardware_level/set",base+"/device/command/set",base+"/device/brightness/set",base+"/display/policy/+/set","homeassistant/status"});
                 if(stopping){session.close();break;}
                 mqttOnline=true;refreshRuntimeStatus();synchronizeState();retry=1000;
                 while(!stopping){MqttSession.Message m=session.next();
                     if(m!=null){
                         if(m.topic.equals("homeassistant/status")&&m.payload.equals("online"))synchronizeState();
+                        else if(m.topic.equals(base+"/app/group_state/get")){if(!m.retained)publishGroupMembership(true);}
                         else if(m.topic.equals(base+"/app/dashboard/set"))applyDashboard(m.payload);
                         else if(m.topic.equals(base+"/knob/media/set")){if(!m.retained)configureLocalMedia(m.payload);}
                         else if(m.topic.equals(base+"/audio/command/set")){if(!m.retained)audioCommand(m.payload);}
@@ -131,6 +143,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         }
     }
     private void publish(final String suffix,final String value,final boolean retained){
+        if(suffix.startsWith("/knob/")&&suffix.endsWith("/state"))webKnob.put(suffix,value);
         final MqttSession session=mqtt;if(session==null||!mqttOnline)return;
         if(Boolean.TRUE.equals(nativeCallback.get())||Thread.holdsLock(this)){
             final long at=SystemClock.elapsedRealtime();
@@ -149,9 +162,32 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         }catch(Exception e){try{JSONObject error=new JSONObject();error.put("v",1);error.put("error","Dashboard URL rejected or could not be saved");publish("/app/dashboard/state",error.toString(),true);}catch(JSONException ignored){}}
     }
     private synchronized void synchronizeState(){
+        announceGroupEndpoint(true);
+        publishGroupMembership(true);
         NativeWorker active=worker;JSONObject current=state;if(current==null||active==null||!active.isRunning())return;publishState(current);
         int[][] copy=bindings;if(bindingsKnown)for(int b=0;b<4;b++)publish("/button/"+(b+1)+"/binding/state",copy[b][0]+","+copy[b][1],true);
         active.send("knob_status");active.send("audio_status");active.send("display status 0");active.send("management status 0");dashboardState();
+    }
+    private synchronized void announceGroupEndpoint(boolean force){
+        if(!mqttOnline)return;
+        try{
+            String payload=GroupEndpoint.payload(this);if(payload==null)return;
+            long now=SystemClock.elapsedRealtime();MqttSession session=mqtt;
+            if(force||session!=endpointSession||!payload.equals(endpointPayload)||now-endpointSent>=30000){
+                publish("/app/group_endpoint/state",payload,true);
+                endpointSession=session;endpointPayload=payload;endpointSent=now;
+            }
+        }catch(Exception ignored){} // Retry when the selected interface/API becomes ready.
+    }
+    private synchronized void publishGroupMembership(boolean force){
+        if(!mqttOnline)return;
+        com.wallpanel.multiroom.GroupHub hub=com.wallpanel.multiroom.GroupHub.get();if(hub==null)return;
+        try{
+            String payload=hub.membership().toString();MqttSession session=mqtt;
+            if(force||session!=groupSession||!payload.equals(groupPayload)){
+                publish("/app/group_state",payload,true);groupSession=session;groupPayload=payload;
+            }
+        }catch(Exception ignored){}
     }
     private void loadLocalMedia(){
         android.content.SharedPreferences prefs=getSharedPreferences("local_media_knob",0);
@@ -234,6 +270,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
         String artSent=null;MqttSession artConnection=null;
         while(!stopping){
             refreshRuntimeStatus();
+            publishGroupMembership(false);
             NativeWorker active=worker;JSONObject data=audioState;boolean online=audioOnline&&config.selected.contains("audio")&&active!=null&&active.isRunning();
             MqttSession session=mqtt;String json=data==null?"":data.toString();
             if(mqttOnline&&(session!=previous||online!=previousOnline||!json.equals(sent))){
@@ -261,8 +298,8 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             publish("/module/availability",online&&enabled?"online":"offline",true);
             publish("/knob/input/availability",value.getBoolean("knob_input_enabled")&&value.getBoolean("knob_input_ready")?"online":"offline",true);
             publish("/knob/display/availability",value.getBoolean("knob_display_enabled")&&value.getBoolean("knob_display_ready")?"online":"offline",true);
-            publish("/knob/controller/capabilities","{\"frames\":"+value.getBoolean("knob_display_enabled")+",\"local_buttons\":true,\"local_media\":true,\"media_icons\":true,\"knob_input_enabled\":"+value.getBoolean("knob_input_enabled")+"}",true);
-            publish("/audio/amplifier/availability",value.optBoolean("audio_owned",false)&&config.selected.contains("amplifier")?"online":"offline",true);
+            publish("/knob/controller/capabilities","{\"frames\":"+value.getBoolean("knob_display_enabled")+",\"local_buttons\":"+config.profile.equals("g10")+",\"knob_led\":"+config.profile.equals("g10")+",\"local_media\":true,\"media_icons\":true,\"knob_input_enabled\":"+value.getBoolean("knob_input_enabled")+"}",true);
+            publish("/audio/amplifier/availability",value.optBoolean("audio_owned",false)&&config.selected.contains("amplifier")&&config.profile.equals("g10")?"online":"offline",true);
             if(value.optBoolean("audio_owned",false))publish("/audio/owner","app",true);
             JSONArray relays=value.getJSONArray("relays");
             if(online&&value.getBoolean("relays_enabled"))for(int i=0;i<2;i++){int state=relays.getInt(i);if(state==0||state==1)publish("/relay/"+(i+1)+"/state",state==1?"ON":"OFF",true);}
@@ -302,7 +339,7 @@ public final class BridgeService extends Service implements NativeWorker.Listene
             }else if(type.equals("knob_state")){
                 String topic=data.getString("topic");if(config.selected.contains("knob_display")&&topic.matches("/knob/(?:display/(?:availability|(?:title|value|detail|power|follow_main|activity|ring|color|actual)/state)|led/color/state)"))publish(topic,data.getString("payload"),true);
             }else if(type.equals("management_state")){ManagementRuntime current=management;if(current!=null)current.backend(data);}
-            else if(type.equals("display_state")){if(config.selected.contains("display"))publish("/display/state",data.getJSONObject("data").toString(),true);}
+            else if(type.equals("display_state")){webDisplay=data.getJSONObject("data");if(config.selected.contains("display"))publish("/display/state",webDisplay.toString(),true);}
             else if(type.equals("audio_level")){if(config.selected.contains("amplifier")){int value=data.getInt("value");if(value>=0&&value<=100)publish("/audio/hardware_level/state",Integer.toString(value),true);}}
             else if(type.equals("audio_result")){
                 final String command=data.getString("command");final boolean ok=data.getBoolean("ok");

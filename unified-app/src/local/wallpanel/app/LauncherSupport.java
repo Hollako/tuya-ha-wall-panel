@@ -17,7 +17,7 @@ final class LauncherSupport {
         for(String action:actions){Intent intent=new Intent(action);if(intent.resolveActivity(activity.getPackageManager())!=null){
             try{activity.startActivity(intent);return;}catch(android.content.ActivityNotFoundException ignored){}catch(SecurityException ignored){}
         }}
-        Toast.makeText(activity,"Open Android Settings > Apps > Default apps > Home app and choose Tuya HA Wall Panel",Toast.LENGTH_LONG).show();
+        Toast.makeText(activity,"Open Android Settings > Apps > Default apps > Home app and choose SmartWay Panel",Toast.LENGTH_LONG).show();
     }
     static Intent dashboardIntent(Context c){
         if(isDefaultHome(c))return new Intent(c,HomeActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);

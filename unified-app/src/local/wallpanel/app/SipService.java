@@ -19,7 +19,7 @@ public final class SipService extends Service {
         NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);Notification.Builder notification;
         if(Build.VERSION.SDK_INT>=26){manager.createNotificationChannel(new NotificationChannel("wallpanel_sip","Wall Panel intercom",NotificationManager.IMPORTANCE_LOW));notification=new Notification.Builder(this,"wallpanel_sip");}else notification=new Notification.Builder(this);
         PendingIntent settings=PendingIntent.getActivity(this,42,new Intent(this,MainActivity.class),PendingIntent.FLAG_UPDATE_CURRENT);
-        startForeground(42,notification.setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle("Tuya HA Wall Panel intercom").setContentText("SIP service enabled").setOngoing(true).setContentIntent(settings).build());
+        startForeground(42,notification.setSmallIcon(android.R.drawable.sym_call_incoming).setContentTitle("SmartWay Panel intercom").setContentText("SIP service enabled").setOngoing(true).setContentIntent(settings).build());
         if(engine!=null)return START_STICKY;
         try{store.load().validate();wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wallpanel:sip");wake.setReferenceCounted(false);wake.acquire();
             engine=new SipEngine(new SipEngine.NetworkHost(){

@@ -3,7 +3,7 @@ package local.wallpanel.app;
 public final class AppModePolicy {
     public static String packageName(String value){
         if(value==null||value.length()>160||!value.matches("[A-Za-z][A-Za-z0-9_]*(?:\\.[A-Za-z][A-Za-z0-9_]*)+"))throw new IllegalArgumentException("Choose an installed app");
-        if(value.equals("local.wallpanel.app"))throw new IllegalArgumentException("Choose an app other than Tuya HA Wall Panel");
+        if(value.equals("local.wallpanel.app"))throw new IllegalArgumentException("Choose an app other than SmartWay Panel");
         return value;
     }
     public static void validate(String mode,String target){

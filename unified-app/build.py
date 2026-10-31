@@ -53,12 +53,15 @@ for profile in ('g10','a133'):
         destination=ROOT/'assets/hardware'/(profile+'-'+abi)/'wallpanel-system-ui.jar'
         if destination!=ui_jar:shutil.copyfile(ui_jar,destination)
 provision=ROOT/'assets/provision'
-variants={}
-for abi in ('arm64','arm32'):
-    hardware=ROOT/'assets/hardware'/('g10-'+abi)
-    paths={name:(provision if name.endswith('.sh') else hardware)/name for name in ('wallpanel-core','wallpanel-capture','wallpanel-privilege','wallpanel-system-ui.jar','setup-panel.sh','bootstrap-panel.sh')}
-    variants[abi]={'files':{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in paths.items()}}
-(provision/'manifest.json').write_text(json.dumps({'v':1,'profile':'g10','files':variants['arm64']['files'],'variants':variants},indent=2),encoding='utf-8')
+profiles={}
+for profile in ('g10','a133'):
+    variants={}
+    for abi in ('arm64','arm32'):
+        hardware=ROOT/'assets/hardware'/(profile+'-'+abi)
+        paths={name:(provision/(('setup-a133.sh' if profile=='a133' and name=='setup-panel.sh' else name)) if name.endswith('.sh') else hardware/name) for name in ('wallpanel-core','wallpanel-capture','wallpanel-privilege','wallpanel-system-ui.jar','setup-panel.sh','bootstrap-panel.sh')}
+        variants[abi]={'files':{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in paths.items()}}
+    profiles[profile]={'profile':profile,'variants':variants}
+(provision/'manifest.json').write_text(json.dumps({'v':1,'profile':'g10','files':profiles['g10']['variants']['arm64']['files'],'variants':profiles['g10']['variants'],'profiles':profiles},indent=2),encoding='utf-8')
 apk=BUILD/'apk';apk.mkdir();shutil.copyfile(ROOT/'AndroidManifest.xml',apk/'AndroidManifest.xml');shutil.copyfile(BUILD/'classes.dex',apk/'classes.dex')
 if (ROOT/'assets').exists():shutil.copytree(ROOT/'assets',apk/'assets')
 licenses=apk/'assets/licenses/sip';licenses.mkdir(parents=True,exist_ok=True)
@@ -109,6 +112,8 @@ with zipfile.ZipFile(temporary,'w',zipfile.ZIP_DEFLATED) as out:
     out.writestr('META-INF/MANIFEST.MF',manifest);out.writestr('META-INF/WALLPANEL.SF',sf);out.writestr('META-INF/WALLPANEL.RSA',signature)
     for name,data in files:out.writestr(name,data,compress_type=zipfile.ZIP_STORED if name=="assets/intercom-chime.wav" else zipfile.ZIP_DEFLATED)
 shutil.copyfile(temporary,output)
-(ROOT/'build-result.json').write_text(json.dumps({'version':version,'package':'local.wallpanel.app','apk':output.name,'bytes':output.stat().st_size,'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'installed':False,'hardware_takeover':False,'supported_abis':['armeabi-v7a','arm64-v8a'],'a133_hardware_ready':False},indent=2),encoding='utf-8')
+from receiver_payloads import verify_web_pages
+with zipfile.ZipFile(output) as signed:verify_web_pages(signed)
+(ROOT/'build-result.json').write_text(json.dumps({'version':version,'package':'local.wallpanel.app','apk':output.name,'bytes':output.stat().st_size,'sha256':hashlib.sha256(output.read_bytes()).hexdigest(),'installed':False,'hardware_takeover':False,'supported_abis':['armeabi-v7a','arm64-v8a'],'a133_hardware_ready':True,'a133_commissioning_pending':True},indent=2),encoding='utf-8')
 print('BUILT',output.name,output.stat().st_size,'bytes. Not installed.')
 run(sys.executable,ROOT/'build_setup_package.py')

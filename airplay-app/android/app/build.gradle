@@ -12,8 +12,8 @@ android {
     applicationId 'com.wallpanel.audioreceiver'
     minSdk 27
     targetSdk 27
-    versionCode 30
-    versionName '1.7.1'
+    versionCode 42
+    versionName '1.11.3'
 
     ndk {
       abiFilters 'arm64-v8a', 'armeabi-v7a'

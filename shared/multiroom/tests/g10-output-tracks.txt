@@ -1,0 +1,6 @@
+Output thread sanitized
+    Name Active Client Session S Flags Format Chn mask SRate ST
+       3    yes   2119     409 A 0x009 00000001 00000003 44100 3
+  0 Effect Chains
+  Local log:
+       3     no   2119     409 T 0x405 00000001 00000003 44100 3

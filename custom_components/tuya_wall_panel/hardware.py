@@ -30,7 +30,7 @@ SPECS = (
     HardwareSpec("switch","knob_activity_mode","Knob activity mode","/knob/display/activity",icon="mdi:timer-outline"),
     HardwareSpec("switch","knob_display_ring","Knob edge circle","/knob/display/ring",icon="mdi:circle-outline"),
     HardwareSpec("select","knob_display_color","Knob display accent color","/knob/display/color",options=("Cyan","White","Red","Green","Blue","Amber","Purple"),icon="mdi:palette"),
-    HardwareSpec("select","knob_led_color","Knob LED color","/knob/led/color",options=("Red","White"),icon="mdi:led-on"),
+    HardwareSpec("select","knob_led_color","Knob LED color","/knob/led/color","knob_led",options=("Red","White"),icon="mdi:led-on"),
     HardwareSpec("number","audio_hardware_level","Audio hardware output level","/audio/hardware_level","amplifier",maximum=100,icon="mdi:amplifier"),
 )
 EVENTS = {"knob": ("rotate_left","rotate_right","press","double_press","long_press"),
@@ -42,7 +42,7 @@ def event_path(key):
 
 class PanelHardware:
     def __init__(self,controller):
-        self.local_media_supported=False;self.media_icons_supported=False
+        self.local_media_supported=False;self.media_icons_supported=False;self.knob_led_supported=True
         self.controller=controller;self.values={};self.module_online=False;self.display_online=False
         self.buttons_enabled=True;self.relays_enabled=True
         self.knob_input_online=True # Legacy bridge predates the dedicated availability topic.
@@ -61,6 +61,7 @@ class PanelHardware:
         for listeners in self._events.values():listeners.clear()
 
     def available(self,kind):
+        if kind=="knob_led":return self.controller.online and self.display_online and self.knob_led_supported
         if kind=="amplifier":return self.controller.online and self.amplifier_online
         if kind=="knob_input":return self.controller.online and self.knob_input_online
         return self.controller.online and (kind=="bridge" or (self.module_online if kind=="module" else self.display_online))
@@ -72,6 +73,7 @@ class PanelHardware:
             try:data=json.loads(message.payload)
             except (ValueError,TypeError):return
             if not isinstance(data,dict):return
+            self.knob_led_supported=data.get("knob_led",True) is not False
             self.local_media_supported=data.get("local_media") is True
             self.media_icons_supported=data.get("media_icons") is True
             self.controller._sent=None

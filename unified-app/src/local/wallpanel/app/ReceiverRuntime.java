@@ -36,22 +36,20 @@ final class ReceiverRuntime {
         else main.postDelayed(deferred,1000);
     }
     private static boolean genericOutput(){
-        try{return !"g10".equals(new ConfigStore(app).load().profile);}catch(Exception ignored){return false;}
+        try{String profile=new ConfigStore(app).load().profile;return !"g10".equals(profile)&&!"a133".equals(profile);}catch(Exception ignored){return false;}
     }
     static void afterCall(){main.post(new Runnable(){public void run(){route();}});}
     static PrefStore settings(Context context){initialize(context);return preferences;}
     static boolean enabled(Context context){return settings(context).isEnabled();}
     static void reconcile(Context context){
         initialize(context);PrefStore prefs=preferences;
-        if(!prefs.isEnabled()){context.stopService(new Intent(context,ReceiverService.class));return;}
         if(Build.VERSION.SDK_INT<27)return;
         Intent start=new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_ENSURE_STARTED);
         if(Build.VERSION.SDK_INT>=26)context.startForegroundService(start);else context.startService(start);
     }
     static void apply(Context context){
         initialize(context);
-        if(!enabled(context)){context.stopService(new Intent(context,ReceiverService.class));return;}
-        context.startForegroundService(new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_START));
+        context.startForegroundService(new Intent(context,ReceiverService.class).setAction(ReceiverService.ACTION_RECONFIGURE));
     }
     static void restartForWebSettings(Context context){
         initialize(context);app.stopService(new Intent(app,ReceiverService.class));

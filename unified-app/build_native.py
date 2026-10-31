@@ -19,11 +19,12 @@ for abi in variants:
     metadata={'protocol':1,'profile':'g10','abi':abi,'android_abi':catalog['abis'][abi],'binary':'wallpanel-core','sha256':digest(out/'wallpanel-core'),'capture_sha256':digest(out/'wallpanel-capture'),'privilege_sha256':digest(out/'wallpanel-privilege'),'root_required':True,'automatic_activation':False,'network':False,'runtime_ready':True,'buttons':4,'relays':2,'button_hold':False,'implemented_modules':['buttons','relays','knob_input','knob_display','audio','amplifier','display','management'],'unimplemented_modules':[]}
     (out/'manifest.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
     candidate=root/'assets/hardware'/('a133-'+abi);candidate.mkdir(parents=True,exist_ok=True)
-    compile_native('a133-probe.c',candidate/'wallpanel-core',abi)
-    for name in ('wallpanel-capture','wallpanel-privilege'):shutil.copyfile(out/name,candidate/name)
-    metadata={**metadata,'profile':'a133','sha256':digest(candidate/'wallpanel-core'),'runtime_ready':False,'buttons':0,'relays':4,'knob_framebuffer':1,'knob_led':False,'implemented_modules':[],'unimplemented_modules':['relays','knob_input','knob_display','audio','amplifier','display','management']}
+    compile_native('a133-core.c',candidate/'wallpanel-core',abi)
+    compile_native('a133-capture.c',candidate/'wallpanel-capture',abi)
+    shutil.copyfile(out/'wallpanel-privilege',candidate/'wallpanel-privilege')
+    metadata={**metadata,'profile':'a133','sha256':digest(candidate/'wallpanel-core'),'runtime_ready':abi=='arm32','capture_sha256':digest(candidate/'wallpanel-capture'),'buttons':0,'relays':2,'knob_framebuffer':1,'knob_led':False,'implemented_modules':['relays','knob_input','knob_display','audio','amplifier','display','management'],'unimplemented_modules':['buttons','knob_led','hardware_gain']}
     (candidate/'manifest.json').write_text(json.dumps(metadata,indent=2),encoding='utf-8')
     print('Built and checked ELF payloads:',abi,flush=True)
 for profile in ('g10','a133'):
-    catalog['profiles'][profile]={'runtime_ready':profile=='g10','variants':{abi:profile+'-'+abi for abi in variants}}
+    catalog['profiles'][profile]={'runtime_ready':True,'variants':{abi:profile+'-'+abi for abi in variants}}
 (root/'assets/hardware/catalog.json').write_text(json.dumps(catalog,indent=2),encoding='utf-8')

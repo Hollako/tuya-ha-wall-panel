@@ -19,7 +19,6 @@ from .device import PanelDevice
 from .hardware import PanelHardware
 from .app import PanelApp
 from .groups import PanelGroups
-from .groups import PanelGroups
 
 _LOGGER = logging.getLogger(__name__)
 CLOCK = "clock.local"
@@ -50,7 +49,6 @@ class KnobController:
         self.hardware=PanelHardware(self)
         self.app=PanelApp(self)
         self.groups=PanelGroups(self)
-        self.groups=PanelGroups(self)
 
     def spawn(self,coro):
         if self._closed:coro.close();return
@@ -59,7 +57,6 @@ class KnobController:
         return task
 
     async def start(self):
-        await self.groups.start()
         await self.groups.start()
         await self.app.start()
         await self.hardware.start()
@@ -86,7 +83,6 @@ class KnobController:
 
     async def stop(self):
         self._closed=True
-        await self.groups.stop()
         await self.groups.stop()
         await self.app.stop()
         await self.hardware.stop()

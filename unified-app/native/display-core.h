@@ -5,6 +5,9 @@ static void core_display_close(void){
     if(core_display_owner>=0){bl_close();close(core_display_owner);core_display_owner=-1;}
     if(core_display_request>=0){close(core_display_request);core_display_request=-1;}
     core_display_ready=0;core_display_sent[0]=0;
+#ifdef WP_A133
+    a133_restore();
+#endif
 }
 static void core_display_tick(void){
     if(!core_config.display){if(core_display_request>=0)core_display_close();return;}

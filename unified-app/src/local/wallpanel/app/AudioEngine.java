@@ -33,17 +33,11 @@ final class AudioEngine extends android.content.ContextWrapper {
     private String source="Android playback", state="idle", title="", error="";
     private boolean receiverLocalStopped;
     private boolean power=true, prepared=false;
-    private int lastVolume=0,commandSeq=0;
-    private VolumePolicy volumePolicy;
-    private double playerLevel=Double.NaN;
+    private int commandSeq=0;
+    private AudioRouteMemory routeMemory;
     private void playerVolume(double value)throws Exception{
-        if(Double.isNaN(value)||Double.isInfinite(value)||value<0||value>1)throw new IllegalArgumentException("Invalid volume");
-        playerLevel=value;player.setVolume((float)value,(float)value);
-        getSharedPreferences("audio_player",MODE_PRIVATE).edit().putFloat("volume",(float)value).apply();
-        int maximum=audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);int index=value==0?0:Math.max(1,(int)Math.ceil(value*maximum));
-        volumePolicy.volume(maximum==0?0:(double)index/maximum);
+        com.wallpanel.multiroom.RoomVolume.set(this,value);if(player!=null){float gain=com.wallpanel.multiroom.RoomVolume.gain();player.setVolume(gain,gain);}
     }
-    private java.lang.reflect.Method unmutedIndex;
     private String requestId="";
     private boolean intercomHeld,intercomResume;private String intercomState;private volatile int focusGeneration;
     private final String audioSession=java.util.UUID.randomUUID().toString();
@@ -53,26 +47,27 @@ final class AudioEngine extends android.content.ContextWrapper {
     };
 
     void start()throws Exception {
-        VendorAudio.aux();VendorAudio.external();running=true;
+        com.wallpanel.multiroom.RoomVolume.initialize(this);
+        final android.content.SharedPreferences routes=getSharedPreferences("audio_routes",MODE_PRIVATE);
+        routeMemory=new AudioRouteMemory(new AudioRouteMemory.Store(){
+            public boolean contains(String key){return routes.contains(key);}
+            public boolean get(String key){return routes.getBoolean(key,false);}
+            public void save(String key,boolean value)throws Exception {if(!routes.edit().putBoolean(key,value).commit())throw new java.io.IOException("Audio setting could not be saved");}
+        },new AudioRouteMemory.Board(){
+            public boolean external()throws Exception{return VendorAudio.external();}
+            public void external(boolean value)throws Exception{VendorAudio.external(value);}
+            public boolean line()throws Exception{return VendorAudio.aux();}
+            public void line(boolean value)throws Exception{VendorAudio.source(value);}
+        });
+        boolean restoreSource=!IntercomSession.active&&!com.wallpanel.multiroom.GroupRuntime.active()&&!com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.streaming();
+        routeMemory.restore(restoreSource);
+        if(restoreSource&&VendorAudio.aux())listener.hardware("audio power 1");
+        running=true;
         audio=(AudioManager)getSystemService(AUDIO_SERVICE);
         VendorAudio.init((android.app.Application)getApplicationContext());
         syncSource();
-        lastVolume=audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-        try{unmutedIndex=AudioManager.class.getMethod("getLastAudibleStreamVolume",Integer.TYPE);}catch(Exception ignored){}
-        volumePolicy=new VolumePolicy(new VolumePolicy.Backend(){
-            public int maximum(){return audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC);}
-            public int index(){
-                // getStreamVolume reports zero while muted. Read the actual
-                // stored index to distinguish manual mute from volume zero.
-                try{if(unmutedIndex!=null)return ((Integer)unmutedIndex.invoke(audio,Integer.valueOf(AudioManager.STREAM_MUSIC))).intValue();}catch(Exception ignored){}
-                return audio.isStreamMute(AudioManager.STREAM_MUSIC)?lastVolume:audio.getStreamVolume(AudioManager.STREAM_MUSIC);
-            }
-            public boolean muted(){return audio.isStreamMute(AudioManager.STREAM_MUSIC);}
-            public void setIndex(int value){lastVolume=value;audio.setStreamVolume(AudioManager.STREAM_MUSIC,value,0);}
-            public void setMuted(boolean value){audio.adjustStreamVolume(AudioManager.STREAM_MUSIC,value?AudioManager.ADJUST_MUTE:AudioManager.ADJUST_UNMUTE,0);}
-        });
         wake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wallpanel:audio");
-        session=new MediaSession(this,"Tuya HA Wall Panel Audio");
+        session=new MediaSession(this,"SmartWay Panel Audio");
         session.setFlags(MediaSession.FLAG_HANDLES_MEDIA_BUTTONS|MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS);
         session.setCallback(new MediaSession.Callback(){
             public void onPlay(){play();} public void onPause(){pause();} public void onStop(){stop();}
@@ -88,6 +83,7 @@ final class AudioEngine extends android.content.ContextWrapper {
     }
     private final Runnable tick=new Runnable(){public void run(){if(!running)return;if(IntercomSession.active&&!intercomHeld)beginIntercom();if(!IntercomSession.active&&intercomHeld)endIntercom();if(!intercomHeld)syncSource();report();handler.postDelayed(this,1000);}};
     boolean powered(){return power;}
+    boolean hasLocalItem(){return player!=null||source.equals("Line Input");}
     void beginIntercom(){if(intercomHeld)return;focusGeneration++;intercomHeld=true;intercomState=state;intercomResume=player!=null&&((prepared&&player.isPlaying())||state.equals("buffering"));if(intercomResume&&prepared)player.pause();if(state.equals("playing")||state.equals("buffering"))state="paused";}
     void endIntercom(){if(!intercomHeld)return;focusGeneration++;intercomHeld=false;state=intercomState;if(intercomResume&&player!=null&&prepared){focus();player.start();state="playing";}intercomResume=false;}
     private void syncSource(){
@@ -151,14 +147,14 @@ final class AudioEngine extends android.content.ContextWrapper {
     private void pause(){
         error="";
         if(source.equals("AirPlay")){if(!com.wallpanel.audioreceiver.ReceiverRemote.request("pause"))error=com.wallpanel.audioreceiver.ReceiverRemote.lastError();}
-        else if(source.equals("Line Input")){try{selectSource("Android playback");}catch(Exception failed){error="Cannot disconnect AUX";}}
+        else if(source.equals("Line Input")){try{selectSource("Android playback");routeMemory.rememberLine(false);}catch(Exception failed){error="Cannot disconnect AUX";}}
         else if(player!=null&&prepared){player.pause();state="paused";}
         else external(KeyEvent.KEYCODE_MEDIA_PAUSE);
         report();
     }
     private void stop(){
         if(source.equals("AirPlay")){receiverLocalStopped=true;com.wallpanel.audioreceiver.AudioOutputGate.INSTANCE.select(false);ReceiverRuntime.stoppedLocally();}
-        if(source.equals("Line Input"))try{selectSource("Android playback");}catch(Exception failed){error="Cannot disconnect AUX";report();return;}
+        if(source.equals("Line Input"))try{selectSource("Android playback");routeMemory.rememberLine(false);}catch(Exception failed){error="Cannot disconnect AUX";report();return;}
         releasePlayer();state="idle";title="";error="";report();
     }
     private void external(int code){
@@ -172,11 +168,10 @@ final class AudioEngine extends android.content.ContextWrapper {
         URI uri=new URI(url);
         if(!("http".equalsIgnoreCase(uri.getScheme())||"https".equalsIgnoreCase(uri.getScheme()))||uri.getHost()==null||uri.getUserInfo()!=null)
             throw new IllegalArgumentException("Use an HTTP or HTTPS media URL");
-        selectSource("Android playback");state="buffering";
+        selectSource("Android playback");routeMemory.rememberLine(false);state="buffering";
         title=data.optString("title","Home Assistant audio");if(title.length()>100)title=title.substring(0,100);
         final MediaPlayer next=new MediaPlayer();player=next;
-        if(Double.isNaN(playerLevel)){double hardware=(double)volumePolicy.snapshot().index/Math.max(1,volumePolicy.snapshot().maximum);playerLevel=Math.min(hardware,getSharedPreferences("audio_player",MODE_PRIVATE).getFloat("volume",(float)hardware));}
-        next.setVolume((float)playerLevel,(float)playerLevel);
+        float gain=com.wallpanel.multiroom.RoomVolume.gain();next.setVolume(gain,gain);
         next.setAudioStreamType(AudioManager.STREAM_MUSIC);
         next.setWakeMode(this,PowerManager.PARTIAL_WAKE_LOCK);
         next.setOnPreparedListener(new MediaPlayer.OnPreparedListener(){public void onPrepared(MediaPlayer mp){
@@ -197,9 +192,7 @@ final class AudioEngine extends android.content.ContextWrapper {
     void knob(String action,int step){
         if(!running)return;
         try{
-            VolumePolicy.Snapshot snapshot=volumePolicy.snapshot();JSONObject command=new JSONObject();
-            if(com.wallpanel.multiroom.GroupRuntime.active())snapshot=new VolumePolicy.Snapshot(1000,(int)Math.round(com.wallpanel.multiroom.GroupRuntime.volume(this)*1000),com.wallpanel.multiroom.GroupRuntime.muted(this));
-            else if(player!=null)snapshot=new VolumePolicy.Snapshot(1000,(int)Math.round(playerLevel*1000),snapshot.muted||playerLevel==0);
+            VolumePolicy.Snapshot snapshot=new VolumePolicy.Snapshot(1000,(int)Math.round(com.wallpanel.multiroom.RoomVolume.value(this)*1000),com.wallpanel.multiroom.RoomVolume.muted(this));JSONObject command=new JSONObject();
             if(action.equals("up")||action.equals("down"))command.put("command","volume").put("value",LocalMediaKnob.volume(snapshot.index,snapshot.maximum,step,action.equals("up")));
             else if(action.equals("mute"))command.put("command","mute").put("value",!snapshot.muted);
             else if(action.equals("play_pause"))command.put("command","play_pause");
@@ -223,7 +216,7 @@ final class AudioEngine extends android.content.ContextWrapper {
                 if(cmd.equals("stop")||cmd.equals("off")||cmd.equals("source")||cmd.equals("play_url"))com.wallpanel.multiroom.GroupRuntime.stop(this);
             }
             if(cmd.equals("volume")){
-                if(player!=null)playerVolume(data.getDouble("value"));else volumePolicy.volume(data.getDouble("value"));
+                playerVolume(data.getDouble("value"));
             }else if(cmd.equals("receiver_delay")||cmd.equals("receiver_trim")){
                 Object rawValue=data.get("value");if(!(rawValue instanceof Number))throw new IllegalArgumentException("Invalid receiver level");
                 double rawNumber=((Number)rawValue).doubleValue();int value=(int)rawNumber;
@@ -241,12 +234,13 @@ final class AudioEngine extends android.content.ContextWrapper {
                 prefs.put(com.wallpanel.audioreceiver.PrefStore.KEY_ENABLED,enabled);prefs.put(com.wallpanel.audioreceiver.PrefStore.KEY_AUTOSTART,true);
                 ReceiverRuntime.reconcile(this);
             }else if(cmd.equals("mute")){
-                volumePolicy.mute(data.getBoolean("value"));
+                com.wallpanel.multiroom.RoomVolume.mute(this,data.getBoolean("value"));
             }else if(cmd.equals("source")){
                 selectSource(data.getString("value"));
+                routeMemory.rememberLine(source.equals("Line Input"));
             }else if(cmd.equals("external_speakers")){
                 boolean enabled=data.getBoolean("value");
-                VendorAudio.external(enabled);
+                routeMemory.external(enabled);
                 if(!listener.hardware("audio speakers "+(enabled?1:0)))throw new java.io.IOException("Hardware command queue unavailable");
             }else if(cmd.equals("speaker_saved")){
                 if(!data.getBoolean("ok"))error="Could not save vendor speaker preference";
@@ -297,12 +291,9 @@ final class AudioEngine extends android.content.ContextWrapper {
             }
             boolean active=state.equals("playing")||state.equals("buffering");
             if(active&&!wake.isHeld())wake.acquire();else if(!active&&wake.isHeld())wake.release();
-            VolumePolicy.Snapshot levels=volumePolicy.snapshot();
-            int max=levels.maximum,volume=levels.index;
-            boolean muted=levels.muted;
-            lastVolume=volume;
-            if(com.wallpanel.multiroom.GroupRuntime.active()&&!intercomHeld){max=1000;volume=(int)Math.round(com.wallpanel.multiroom.GroupRuntime.volume(this)*1000);muted=com.wallpanel.multiroom.GroupRuntime.muted(this);}
-            else if(player!=null&&!intercomHeld){max=1000;volume=(int)Math.round(playerLevel*1000);muted=levels.muted||playerLevel==0;}
+            com.wallpanel.multiroom.RoomVolume.observe(this);
+            int max=100,volume=(int)Math.round(com.wallpanel.multiroom.RoomVolume.value(this)*100);boolean muted=com.wallpanel.multiroom.RoomVolume.muted(this);
+            if(player!=null&&!intercomHeld){float gain=com.wallpanel.multiroom.RoomVolume.gain();player.setVolume(gain,gain);}
             JSONObject data=new JSONObject();data.put("state",power?state:"off");data.put("source",source);
             data.put("command_seq",commandSeq);
             data.put("request_id",requestId);data.put("audio_session",audioSession);data.put("volume_steps",max);

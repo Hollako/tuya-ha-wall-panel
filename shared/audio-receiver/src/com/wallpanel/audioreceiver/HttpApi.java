@@ -12,25 +12,40 @@ public class HttpApi implements Runnable {
  private final WifiManager.MulticastLock multicastLock;private final PowerManager.WakeLock wakeLock;
  private final AudioSourceModule bluetooth;
  private com.wallpanel.multiroom.GroupHub groupHub;
- private volatile boolean running=true;private ServerSocket serverSocket;
+ private volatile boolean running=true;private final RebindableServer listener;
  private final ExecutorService clients=new ThreadPoolExecutor(1,4,30,TimeUnit.SECONDS,new ArrayBlockingQueue<Runnable>(8));
- public HttpApi(Context c,WifiManager wifi,PowerManager power,PrefStore p,ReceiverState s,LogBuf logs,AudioSourceModule bluetooth){this.bluetooth=bluetooth;context=c;prefs=p;state=s;logBuf=logs;multicastLock=wifi.createMulticastLock("wpar_mdns");multicastLock.setReferenceCounted(false);wakeLock=power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wpar:stream");wakeLock.setReferenceCounted(false);}
+ public HttpApi(Context c,WifiManager wifi,PowerManager power,PrefStore p,ReceiverState s,LogBuf logs,AudioSourceModule bluetooth){this.bluetooth=bluetooth;context=c;prefs=p;state=s;logBuf=logs;listener=new RebindableServer(p.getHaPort());multicastLock=wifi.createMulticastLock("wpar_mdns");multicastLock.setReferenceCounted(false);wakeLock=power.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"wpar:stream");wakeLock.setReferenceCounted(false);}
  public void acquireMulticastLock(){if(!multicastLock.isHeld())multicastLock.acquire();state.setMulticastLockHeld(true);}
  public void releaseMulticastLock(){if(multicastLock.isHeld())multicastLock.release();state.setMulticastLockHeld(false);}
  public PowerManager.WakeLock getWakeLock(){return wakeLock;}
- public void run(){try{serverSocket=new ServerSocket(prefs.getHaPort());groupHub=new com.wallpanel.multiroom.GroupHub(context,prefs);groupHub.start();state.setHaPort(prefs.getHaPort());state.setHaTokenEnabled(!prefs.getHaToken().isEmpty());while(running){Socket s=serverSocket.accept();try{clients.execute(()->handle(s));}catch(RejectedExecutionException e){s.close();}}}catch(Exception e){if(running)Log.w("HttpApi","API failed",e);}finally{if(groupHub!=null)groupHub.close();}}
+ public void run(){try{groupHub=new com.wallpanel.multiroom.GroupHub(context,prefs);groupHub.networkListener(()->listener.rebind());groupHub.start();state.setHaPort(prefs.getHaPort());state.setHaTokenEnabled(!prefs.getHaToken().isEmpty());while(running){Socket s=listener.accept();try{clients.execute(()->handle(s));}catch(RejectedExecutionException e){s.close();}}}catch(Exception e){if(running)Log.w("HttpApi","API failed",e);}finally{listener.close();if(groupHub!=null)groupHub.close();}}
  private void reply(Socket s,int code,String type,byte[] data)throws IOException{OutputStream out=s.getOutputStream();String reason=code==200?"OK":code==401?"Unauthorized":code==404?"Not Found":code==500?"Internal Server Error":"Bad Request";out.write(("HTTP/1.1 "+code+" "+reason+"\r\nContent-Type: "+type+"\r\nContent-Length: "+data.length+"\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n\r\n").getBytes("US-ASCII"));out.write(data);out.flush();}
  private void json(Socket s,int code,String body)throws IOException{reply(s,code,"application/json; charset=utf-8",body.getBytes("UTF-8"));}
  private void handle(Socket socket){try(Socket s=socket){
   s.setSoTimeout(3000);BufferedReader in=new BufferedReader(new InputStreamReader(s.getInputStream(),"ISO-8859-1"));String first=in.readLine();if(first==null||first.length()>2048)return;String[] parts=first.split(" ");if(parts.length!=3)return;String method=parts[0],uri=parts[1].split("\\?",2)[0];
   Map<String,String> headers=new HashMap<>();String line;int size=0;while((line=in.readLine())!=null&&!line.isEmpty()){size+=line.length();if(size>8192)return;int n=line.indexOf(':');if(n>0)headers.put(line.substring(0,n).toLowerCase(Locale.ROOT),line.substring(n+1).trim());}
-  if(method.equals("GET")&&(uri.equals("/")||uri.equals("/index.html")||uri.equals("/groups"))){
-   try(InputStream asset=context.getAssets().open(uri.equals("/groups")?"groups.html":"timing.html");ByteArrayOutputStream page=new ByteArrayOutputStream()){
+  if(method.equals("GET")&&(uri.equals("/")||uri.equals("/index.html")||uri.equals("/groups")||uri.equals("/settings"))){
+   try(InputStream asset=context.getAssets().open(uri.equals("/settings")?"settings.html":"groups.html");ByteArrayOutputStream page=new ByteArrayOutputStream()){
     byte[] buffer=new byte[4096];int n;while((n=asset.read(buffer))!=-1)page.write(buffer,0,n);
     reply(s,200,"text/html; charset=utf-8",page.toByteArray());
    }return;
   }
+  if(method.equals("GET")&&uri.equals("/api/v1/identity")){try{String query=parts[1].split("\\?",2)[1];if(!query.startsWith("challenge="))throw new IllegalArgumentException();json(s,200,groupHub.identity(query.substring(10)).toString());}catch(Exception invalid){json(s,400,"{}");}return;}
   String token=prefs.getHaToken();if(!token.isEmpty()&&!("Bearer "+token).equals(headers.get("authorization"))){json(s,401,"{}");return;}
+  if(method.equals("POST")&&!headers.getOrDefault("content-type","").split(";",2)[0].trim().equalsIgnoreCase("application/json")){json(s,400,"{\"error\":\"JSON content type required\"}");return;}
+  if(uri.equals("/api/v1/settings")||uri.equals("/api/v1/settings-action")){
+   try{
+    if(method.equals("GET")&&uri.equals("/api/v1/settings")){json(s,200,SettingsHub.snapshot(context,prefs).toString());return;}
+    if(!method.equals("POST")){json(s,400,"{}");return;}
+    int length=Integer.parseInt(headers.getOrDefault("content-length","0"));if(length<1||length>65536){json(s,400,"{}");return;}
+    char[] data=new char[length];int at=0;while(at<length){int n=in.read(data,at,length-at);if(n<0)throw new IOException("Short settings body");at+=n;}
+    org.json.JSONObject body=new org.json.JSONObject(new String(new String(data).getBytes("ISO-8859-1"),"UTF-8"));String pin=headers.getOrDefault("x-panel-pin",""),nativeKey=headers.getOrDefault("x-local-admin","");
+    json(s,200,(uri.endsWith("settings-action")?SettingsHub.action(context,body.getString("action"),pin,nativeKey):SettingsHub.save(context,prefs,body,pin,nativeKey)).toString());
+   }catch(SecurityException denied){json(s,403,"{\"error\":\"Administrator PIN required\"}");}
+   catch(IllegalArgumentException|org.json.JSONException invalid){json(s,400,new org.json.JSONObject().put("error",invalid.getMessage()).toString());}
+   catch(Exception failed){json(s,500,new org.json.JSONObject().put("error",failed.getMessage()==null?"Settings could not be applied":failed.getMessage()).toString());}
+   return;
+  }
   if(method.equals("GET")){
    if(uri.equals("/api/v1/library")){
     try{Map<String,String> query=new HashMap<>();String[] raw=parts[1].split("\\?",2);if(raw.length==2)for(String field:raw[1].split("&")){String[] pair=field.split("=",2);query.put(URLDecoder.decode(pair[0],"UTF-8"),pair.length==2?URLDecoder.decode(pair[1],"UTF-8"):"");}
@@ -185,5 +200,5 @@ public class HttpApi implements Runnable {
   }
 
 
- public void stop(){running=false;try{if(serverSocket!=null)serverSocket.close();}catch(IOException ignored){}clients.shutdownNow();}
+ public void stop(){running=false;listener.close();clients.shutdownNow();}
 }

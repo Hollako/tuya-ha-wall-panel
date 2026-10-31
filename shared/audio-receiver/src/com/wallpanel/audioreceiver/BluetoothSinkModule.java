@@ -81,6 +81,7 @@ public final class BluetoothSinkModule implements AudioSourceModule {
   /** Android owns persistence; sync on app startup, Apply and Bluetooth ON. */
   private synchronized void syncReceiverName() {
     nameSyncError = null;
+    if(!SettingsHub.ownsBluetoothName())return;
     if (adapter == null) return;
     try {
       if (!adapter.isEnabled()) return;
@@ -102,6 +103,7 @@ public final class BluetoothSinkModule implements AudioSourceModule {
   public String sourceId() { return "bluetooth"; }
   public synchronized void startObserving() {
     if (registered || adapter == null) return;
+    BluetoothProfiles.start(context);
     IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
     filter.addAction(CONNECTION); filter.addAction(PLAYING);
     context.registerReceiver(receiver, filter);
@@ -117,6 +119,9 @@ public final class BluetoothSinkModule implements AudioSourceModule {
     registered = false;
   }
   public synchronized Map<String, Object> snapshot() {
+    org.json.JSONObject live=com.wallpanel.multiroom.MediaActivity.bluetoothEvidence();
+    if(live.optBoolean("known")){connected=live.optBoolean("connected");playing=live.optBoolean("playing");peerName=live.optString("peerName",null);}
+    if(live.optBoolean("renderingKnown")&&live.optBoolean("rendering")){connected=true;playing=true;}
     Map<String, Object> result = new LinkedHashMap<>();
     boolean enabled = false;
     String name = null;
@@ -134,9 +139,13 @@ public final class BluetoothSinkModule implements AudioSourceModule {
     result.put("playing", enabled ? playing : Boolean.FALSE);
     result.put("peerName", peerName);
     result.put("state", adapter == null ? "UNAVAILABLE" : Boolean.FALSE.equals(sinkConfigured) ? "FIRMWARE_DISABLED" : !enabled ? "OFF" : Boolean.TRUE.equals(playing) ? "STREAMING" : Boolean.TRUE.equals(connected) ? "CONNECTED" : "AWAITING_PHONE");
+    if(enabled&&live.optString("recovery").equals("reconnecting"))result.put("state","RECONNECTING");
+    else if(enabled&&Boolean.TRUE.equals(connected)&&Boolean.TRUE.equals(playing)&&live.optBoolean("renderingKnown")&&!live.optBoolean("rendering"))result.put("state","WAITING_FOR_AUDIO");
     result.put("sessionStateKnown", !enabled || connected != null);
     result.put("volumeControl", "firmware_media_volume");
     result.put("error", error);
+    result.put("renderingKnown",live.optBoolean("renderingKnown"));result.put("rendering",live.optBoolean("rendering"));result.put("recovery",live.optString("recovery","idle"));
+    result.put("profileBindingReady",live.optBoolean("known"));result.put("controllerReady",live.optBoolean("controllerReady"));result.put("nativeProbe",live.optString("nativeProbe","unavailable"));
     return result;
   }
 }

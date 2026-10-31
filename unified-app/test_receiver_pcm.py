@@ -3,6 +3,7 @@ from pathlib import Path
 import subprocess,tempfile
 root=Path(__file__).resolve().parent
 sources={
+'com/wallpanel/multiroom/RoomVolume.java':'package com.wallpanel.multiroom;public class RoomVolume {public static float level=1;public static float gain(){return level;}}',
 'android/media/AudioManager.java':'package android.media;public class AudioManager {public static final int STREAM_MUSIC=3;}',
 'android/media/AudioFormat.java':'package android.media;public class AudioFormat {public static final int CHANNEL_OUT_STEREO=12,ENCODING_PCM_16BIT=2;}',
 'android/media/AudioDeviceInfo.java':'package android.media;public class AudioDeviceInfo {public int getId(){return 1;}}',
@@ -64,6 +65,9 @@ ExecutorService work=Executors.newSingleThreadExecutor();
 Future<AudioOutputGate.Lease> held=work.submit(new Callable<AudioOutputGate.Lease>(){public AudioOutputGate.Lease call(){return AudioOutputGate.INSTANCE.hold();}});
 AudioOutputGate.Lease nested=held.get(1,TimeUnit.SECONDS);check(AudioTrack.latest.volume==0);
 ring.close();check(AudioTrack.latest.volume==0);nested.close();check(AudioTrack.latest.volume==1);
+com.wallpanel.multiroom.RoomVolume.level=.5f;gate.refresh();check(AudioTrack.latest.volume==.5f);
+AudioOutputGate.Lease changed=gate.hold();com.wallpanel.multiroom.RoomVolume.level=.25f;gate.refresh();check(AudioTrack.latest.volume==0);changed.close();check(AudioTrack.latest.volume==.25f);
+com.wallpanel.multiroom.RoomVolume.level=1;gate.refresh();check(AudioTrack.latest.volume==1);
 AudioTrack.stall=false;deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(2);while((AudioTrack.latest.frames<1024||!ReceiverState.INSTANCE.isPlaying())&&System.nanoTime()<deadline)Thread.sleep(2);
 check(AudioTrack.latest.frames==1024);check(ReceiverState.INSTANCE.isPlaying());
 pump.stop();thread.join(2000);check(!thread.isAlive());check(AudioTrack.latest.released);check(!wake.isHeld());check(!gate.streaming());work.shutdownNow();

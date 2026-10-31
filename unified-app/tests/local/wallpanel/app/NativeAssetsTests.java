@@ -10,7 +10,7 @@ public final class NativeAssetsTests {
         rejected=false;try{NativeAssets.prefix("../g10",new String[]{"arm64-v8a"});}catch(IllegalArgumentException e){rejected=true;}check(rejected);
         PanelConfig c=new PanelConfig();c.profile="a133";c.validate();
         check(ModuleCatalog.find("dashboard").supported(c.profile));check(ModuleCatalog.find("sip").supported(c.profile));
-        for(ModuleCatalog.Module m:ModuleCatalog.ALL)if(m.hardware)check(!m.supported(c.profile));
+        check(!ModuleCatalog.find("buttons").supported(c.profile));for(String id:new String[]{"display","relays","knob_input","knob_display","audio","amplifier"})check(ModuleCatalog.find(id).supported(c.profile));
         System.out.println("PASS: ARM32/ARM64 selection, profile-specific asset paths, unknown ABI/path refusal and A133 hardware guards.");
     }
 }

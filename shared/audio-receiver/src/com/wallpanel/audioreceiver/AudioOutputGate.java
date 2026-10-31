@@ -17,6 +17,7 @@ public final class AudioOutputGate {
     public synchronized boolean audible(){return selected&&holds==0;}
     public synchronized boolean active(long token){return stream&&token==generation;}
     public synchronized boolean streaming(){return stream;}
+    public synchronized void refresh(){apply();}
     public synchronized boolean selectSession(long token){if(!active(token))return false;selected=true;apply();return true;}
     public long beginSession(){
         Sessions listener;long token;

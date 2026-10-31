@@ -3,7 +3,7 @@ from pathlib import Path
 import subprocess,sys,unittest,zipfile,json
 root=Path(__file__).resolve().parent
 sys.path.insert(0,str(root))
-from receiver_payloads import payloads
+from receiver_payloads import payloads,verify_web_pages,WEB_PAGES
 
 class ReceiverMergeTests(unittest.TestCase):
     def test_shared_output_policy(self):
@@ -27,7 +27,9 @@ class ReceiverMergeTests(unittest.TestCase):
         dedicated=root.parent/'airplay-app/android/app/build/outputs/apk/debug/app-debug.apk'
         import hashlib
         with zipfile.ZipFile(unified) as panel,zipfile.ZipFile(dedicated) as receiver:
-            self.assertEqual(panel.read('assets/timing.html'),receiver.read('assets/timing.html'))
+            verify_web_pages(panel)
+            verify_web_pages(receiver)
+            for name in WEB_PAGES:self.assertEqual(panel.read('assets/'+name),receiver.read('assets/'+name))
             for (abi,name),path in payloads().items():
                 entry=('lib/'+abi+'/libwpar_shairport.so') if name=='shairport-sync' else ('assets/receiver/'+abi+'/'+name)
                 self.assertEqual(hashlib.sha256(panel.read(entry)).digest(),hashlib.sha256(path.read_bytes()).digest())

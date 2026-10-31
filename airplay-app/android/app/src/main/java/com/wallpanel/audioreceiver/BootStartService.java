@@ -33,7 +33,7 @@ public class BootStartService extends Service {
   @Override public void onCreate(){
     super.onCreate();
     NotificationManager manager=getSystemService(NotificationManager.class);
-    manager.createNotificationChannel(new NotificationChannel("wpar_boot","Audio Receiver startup",NotificationManager.IMPORTANCE_LOW));
+    manager.createNotificationChannel(new NotificationChannel("wpar_boot",getString(R.string.app_name)+" startup",NotificationManager.IMPORTANCE_LOW));
     Notification notification=new Notification.Builder(this,"wpar_boot").setSmallIcon(android.R.drawable.ic_media_play)
         .setContentTitle(getString(R.string.app_name)).setContentText("Waiting for Android to unlock").setOngoing(true).build();
     startForeground(2,notification);

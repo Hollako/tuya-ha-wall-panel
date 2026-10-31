@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "id": "a133-sun50iw10p1",
+  "label": "A133 / Android 11",
+  "status": "adapter built; full unified-app commissioning pending",
+  "match": {
+    "model": "A133",
+    "hardware": "sun50iw10p1",
+    "android_api": 30,
+    "abi": "armeabi-v7a"
+  },
+  "runtime_adapter_ready": true,
+  "main_display": {
+    "physical_size": [
+      1280,
+      800
+    ],
+    "brightness": {
+      "implementation": "Android system settings",
+      "user_test_passed": true
+    },
+    "backlight": {
+      "device": "/dev/disp",
+      "screen": 0,
+      "argument_type": "unsigned long[4] in ARM32 process",
+      "get_brightness_ioctl": 259,
+      "enable_ioctl": 260,
+      "disable_ioctl": 261,
+      "user_test_passed": true,
+      "keeps_android_interactive": true
+    },
+    "do_not_use": [
+      "/sys/class/graphics/fb0/blank: exposes startup logo"
+    ]
+  },
+  "knob_display": {
+    "device": "/dev/graphics/fb1",
+    "driver_name": "fb_gc9a01",
+    "size": [
+      240,
+      240
+    ],
+    "stride_bytes": 480,
+    "pixel_format": "RGB565_LE",
+    "mirror_horizontal": true,
+    "user_test_passed": true,
+    "backlight": {
+      "node": "/proc/vendor/lcd_ctrl",
+      "on": "on",
+      "off": "off",
+      "independent": true,
+      "user_test_passed": true
+    }
+  },
+  "knob_input": {
+    "android_event_device": "/dev/input/event0",
+    "android_event_name": "sunxi-keyboard",
+    "clockwise": "KEY_F2",
+    "counterclockwise": "KEY_F1",
+    "click": "KEY_F3",
+    "hold": "KEY_F4",
+    "edges": "synthetic down/up pairs",
+    "double_click": "derive from two KEY_F3 events",
+    "rotation_detents": "six physical clicks produced three Android events",
+    "required_decoder": "Direct-pin half-step quadrature; reuse existing rotary_transition and rotary_physical_direction functions.",
+    "candidate_gpio": [
+      41,
+      42
+    ],
+    "direct_decoder_verified": true,
+    "verified_gpio": {
+      "a": 41,
+      "b": 42,
+      "bank": 1,
+      "a_pin": 9,
+      "b_pin": 10,
+      "compatible": "tk,negpio"
+    },
+    "electrical_to_physical_multiplier": -1,
+    "stable_detent_states": [
+      0,
+      3
+    ],
+    "transitions_per_detent": 2,
+    "verification": {
+      "method": "live passive GPIO capture replayed through actual existing C decoder with explicit count/order checks",
+      "slow": {
+        "clockwise": 10,
+        "counterclockwise": 10,
+        "expected_each": 10,
+        "passed": true
+      },
+      "normal_quick": {
+        "clockwise": 4,
+        "counterclockwise": 4,
+        "expected_each": 4,
+        "passed": true
+      },
+      "earlier_fast_run": {
+        "requested_each": 10,
+        "observed_clockwise": 14,
+        "observed_counterclockwise": 15,
+        "result": "inconclusive physical-count mismatch; not used as a passing test"
+      },
+      "live_adapter_output_test": "pending adapter implementation",
+      "tested_reader": "read-only /sys/kernel/debug/gpio, sampled every 2 ms"
+    }
+  },
+  "relays": {
+    "driver_channels": [
+      {
+        "channel": 1,
+        "node": "/proc/vendor/relay_first",
+        "on": "on",
+        "off": "off",
+        "user_heard_click": true,
+        "enable_by_default": true,
+        "physically_fitted": true
+      },
+      {
+        "channel": 2,
+        "node": "/proc/vendor/relay_second",
+        "on": "on",
+        "off": "off",
+        "user_heard_click": true,
+        "enable_by_default": true,
+        "physically_fitted": true
+      },
+      {
+        "channel": 3,
+        "node": "/proc/vendor/relay_third",
+        "on": "on",
+        "off": "off",
+        "user_heard_click": false,
+        "enable_by_default": false,
+        "physically_fitted": false
+      },
+      {
+        "channel": 4,
+        "node": "/proc/vendor/relay_four",
+        "on": "on",
+        "off": "off",
+        "user_heard_click": false,
+        "enable_by_default": false,
+        "physically_fitted": false
+      }
+    ],
+    "confirmed_audible_channels": [
+      1,
+      2
+    ],
+    "unverified_channels": [],
+    "note": "User inspected back panel: L3/L4 labels exist, but screw terminals are not fitted. This tested variant has two physical outputs; never expose channels 3/4.",
+    "physical_output_count": 2,
+    "unfitted_channels": [
+      3,
+      4
+    ]
+  },
+  "physical_buttons": 0,
+  "knob_led": {
+    "enable_by_default": false,
+    "note": "No physical knob LED reported; /proc/vendor/led_ctrl exists but is unverified."
+  },
+  "audio": {
+    "implementation": "existing shared Audio Receiver module",
+    "qualification": "Reuse previous dedicated-app tests; user confirms already working.",
+    "connected_test_output": "Line Out to external amplifier",
+    "hardware_mute_node_affects_line_out": false,
+    "line_out_mute": "software"
+  },
+  "standard_android_sensors": [],
+  "remaining_work": [
+    "Install with a backed-up A133-specific migration when authorized.",
+    "Confirm live knob actions, touch wake, restoration and boot behavior in the unified app.",
+    "Migrate the existing receiver helper authorizations/settings before retiring the dedicated receiver."
+  ],
+  "supported_hardware_abis": [
+    "armeabi-v7a"
+  ],
+  "unsupported_controls": [
+    "buttons",
+    "knob_led",
+    "G10 hardware codec gain"
+  ]
+}

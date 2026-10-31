@@ -31,6 +31,7 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
   public static final String ACTION_ENSURE_STARTED = "com.wallpanel.audioreceiver.ENSURE_STARTED";
   public static final String ACTION_START = "com.wallpanel.audioreceiver.START";
   public static final String ACTION_STOP = "com.wallpanel.audioreceiver.STOP";
+  public static final String ACTION_RECONFIGURE = "com.wallpanel.audioreceiver.RECONFIGURE";
   public static final String ACTION_TOGGLE = "com.wallpanel.audioreceiver.TOGGLE";
 
   private PrefStore prefs;
@@ -58,6 +59,8 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
   private final Runnable retry=new Runnable(){public void run(){if(!destroying&&prefs.isEnabled())startReceiver();}};
   private final Runnable watchNetwork=new Runnable(){public void run(){
     if(destroying)return;
+    com.wallpanel.multiroom.RoomVolume.observe(ReceiverService.this);
+    if(!prefs.isEnabled())localNetworkReady();
     if(prefs.isEnabled()&&receiverStarted&&!startedNetwork.equals(networkKey()))startReceiver();
     mainHandler.postDelayed(this,2000);
   }};
@@ -72,6 +75,9 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
     Log.i(TAG, "Service created");
 
     prefs = new PrefStore(this);
+    android.content.SharedPreferences directory=getSharedPreferences("wallpanel_group_directory",MODE_PRIVATE);String oldName=directory.getString("room_name","");
+    if(!oldName.isEmpty()&&oldName.length()<=63&&getSharedPreferences("wpar_prefs",MODE_PRIVATE).edit().putString(PrefStore.KEY_RECEIVER_NAME,oldName).commit())directory.edit().remove("room_name").commit();
+    com.wallpanel.multiroom.RoomVolume.initialize(this);
     state = ReceiverState.INSTANCE;
     state.addListener(this);
 
@@ -84,7 +90,7 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
     wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
     powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
 
-    bluetoothSink = new BluetoothSinkModule(this, "com.wallpanel.audioreceiver".equals(getPackageName()));
+    bluetoothSink = new BluetoothSinkModule(this, true);
     bluetoothSink.startObserving();
     httpApi = new HttpApi(this, wifiManager, powerManager, prefs, state, logBuf, bluetoothSink);
 
@@ -95,7 +101,7 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
     startForeground(NOTIFICATION_ID, buildNotification("Starting..."));
 
     mainHandler = new Handler(Looper.getMainLooper());
-    if(prefs.isHaEnabled()){httpApiThread=new Thread(httpApi,"wpar-http");httpApiThread.start();}
+    prefs.put(PrefStore.KEY_HA_ENABLED,true);httpApiThread=new Thread(httpApi,"wpar-http");httpApiThread.start();
     registerNetworkCallback();
     mainHandler.postDelayed(watchNetwork,2000);
   }
@@ -107,6 +113,8 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
       String action = intent.getAction();
       if (ACTION_ENSURE_STARTED.equals(action)) {
         if(prefs.isEnabled()&&!receiverStarted)startReceiver();
+      } else if (ACTION_RECONFIGURE.equals(action)) {
+        if(prefs.isEnabled())startReceiver();else stopReceiver();
       } else if (ACTION_START.equals(action)) {
         prefs.put(PrefStore.KEY_ENABLED,true);
         startReceiver();
@@ -261,7 +269,7 @@ public class ReceiverService extends Service implements ReceiverState.Listener {
       builder = new Notification.Builder(this);
     }
     return builder
-        .setContentTitle("Audio Receiver")
+        .setContentTitle(getApplicationInfo().loadLabel(getPackageManager()))
         .setContentText(text)
         .setSmallIcon(android.R.drawable.ic_media_play)
         .setOngoing(true)

@@ -85,10 +85,14 @@ static int knob_node(const char *path,int value) {
 #endif
 }
 static int knob_main_awake(void) {
+#ifdef WP_KNOB_MAIN_AWAKE
+    return WP_KNOB_MAIN_AWAKE();
+#else
     FILE *f=fopen("/sys/class/backlight/backlight/brightness","r");if(!f)return 0;
     char s[64]={0};char *ok=fgets(s,sizeof(s),f);fclose(f);if(!ok)return 0;
     char *p=s;while(*p&&!isdigit((unsigned char)*p))p++;
     return *p&&strtol(p,NULL,10)>0;
+#endif
 }
 static int knob_render(void) {
     memset(knob_pixels,0,sizeof(knob_pixels));
@@ -138,7 +142,10 @@ static void knob_load(void) {
 }
 static void knob_init(void) {
     if(dry_run)return;
-    knob_load();knob_fb=open("/dev/graphics/fb0",O_RDWR|O_CLOEXEC);
+#ifndef WP_KNOB_FB_PATH
+#define WP_KNOB_FB_PATH "/dev/graphics/fb0"
+#endif
+    knob_load();knob_fb=open(WP_KNOB_FB_PATH,O_RDWR|O_CLOEXEC);
     struct fb_fix_screeninfo fix;
     if(knob_fb<0||ioctl(knob_fb,FBIOGET_VSCREENINFO,&knob_var)||ioctl(knob_fb,FBIOGET_FSCREENINFO,&fix)||strncmp(fix.id,"fb_gc9a01",9)||knob_var.xres!=240||knob_var.yres!=240||knob_var.bits_per_pixel!=16||fix.line_length!=480||fix.smem_len<sizeof(knob_pixels)||knob_var.red.length!=5||knob_var.green.length!=6||knob_var.blue.length!=5){
         if(knob_fb>=0)close(knob_fb);knob_fb=-1;puts("Knob display unavailable: unexpected framebuffer layout.");return;

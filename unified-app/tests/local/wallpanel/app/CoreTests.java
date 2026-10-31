@@ -43,6 +43,10 @@ public final class CoreTests {
         check(nativeText.contains("device_id=wp_example\n"));check(nativeText.contains("buttons=1\nrelays=1\n"));
         check(nativeText.contains("button_1_single=1\n"));check(nativeText.contains("button_4_double=2\n"));check(!nativeText.contains("do-not-export"));
         if(args.length>0){FileOutputStream file=new FileOutputStream(args[0]);try{file.write(nativeText.getBytes("UTF-8"));}finally{file.close();}}
+        PanelConfig a133=new PanelConfig();a133.profile="a133";a133.deviceId="a133_fixture";a133.selected.add("relays");a133.selected.add("knob_input");a133.selected.add("display");
+        String a133Text=NativeSettings.render(a133,new int[4][2]);check(a133Text.contains("profile=a133\n"));check(a133Text.contains("buttons=0\nrelays=1\n"));
+        boolean refused=false;a133.selected.add("buttons");try{NativeSettings.render(a133,new int[4][2]);}catch(IllegalArgumentException expected){refused=true;}check(refused);a133.selected.remove("buttons");
+        refused=false;try{NativeSettings.render(a133,bindings);}catch(IllegalArgumentException expected){refused=true;}check(refused);
         hardware.deviceId="bad\ninjection";badConfig(hardware);
         check(HomePolicy.route("",true,null,false)==HomePolicy.SETUP);
         check(HomePolicy.route("javascript:alert(1)",true,null,false)==HomePolicy.SETUP);

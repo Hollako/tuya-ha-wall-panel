@@ -6,7 +6,7 @@ public final class ModuleCatalog {
         public final String id,label;
         public final boolean hardware,implemented;
         Module(String i,String l,boolean h,boolean ready){id=i;label=l;hardware=h;implemented=ready;}
-        public boolean supported(String profile){return !hardware||"g10".equals(profile);}
+        public boolean supported(String profile){return !hardware||"g10".equals(profile)||"a133".equals(profile)&&!id.equals("buttons");}
         public boolean available(PanelConfig config,boolean adapterVerified,boolean workerReady){
             return implemented&&supported(config.profile)&&config.selected.contains(id)&&(!hardware||adapterVerified)&&workerReady;
         }

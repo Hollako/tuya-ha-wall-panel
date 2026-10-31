@@ -1,6 +1,7 @@
 /* Fixed root audio operations. Board AUX/horn controls use the Android engine;
  * no recorder, PCM loopback, socket listener or separate audio APK is started. */
 #include <sys/prctl.h>
+#include "g10-radio.h"
 static int core_audio_owner=-1,core_audio_started,core_audio_target=-1,core_audio_level_last=-1;
 static long long core_audio_check;
 static pid_t core_audio_jobs[2]={-1,-1};
@@ -32,6 +33,7 @@ static int core_audio_trim(int value){
 #define WP_AUDIO_TRIM core_audio_trim
 #endif
 static void core_audio_close(void){
+    core_radio_close();
     for(int i=0;i<2;i++){
         core_audio_pending[i]=-1;
         if(core_audio_jobs[i]>0){kill(core_audio_jobs[i],SIGKILL);while(waitpid(core_audio_jobs[i],NULL,0)<0&&errno==EINTR){}core_audio_jobs[i]=-1;}
@@ -45,6 +47,7 @@ static void core_audio_tick(void){
         if(core_config.amplifier){FILE *f=fopen(STATE"/audio-output-trim","r");int v=-1;if(f){if(fscanf(f,"%d",&v)==1&&v>=0&&v<=100)core_audio_target=v;fclose(f);}}
     }
     long long now=ms();
+    if(core_config.audio)core_radio_tick(now);
     for(int i=0;i<2;i++){
         if(core_audio_jobs[i]>0){
             int status;pid_t done=waitpid(core_audio_jobs[i],&status,WNOHANG);

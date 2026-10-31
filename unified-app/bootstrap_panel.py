@@ -8,14 +8,17 @@ def select_abi(supported):
     if 'armeabi-v7a' in items:return 'arm32'
     raise ValueError('This APK requires ARM32 or ARM64 Android')
 
-def payload(apk,abi='arm64'):
+def payload(apk,abi='arm64',profile='g10'):
+    if profile not in ('g10','a133'):raise ValueError('Unsupported profile')
     if abi not in ('arm64','arm32'):raise ValueError('Unsupported ABI')
+    if profile=='a133' and abi!='arm32':raise ValueError('A133 hardware is verified for ARM32 only')
     with zipfile.ZipFile(apk) as archive:
         manifest=json.loads(archive.read('assets/provision/manifest.json'))
         if manifest.get('v')!=1 or manifest.get('profile')!='g10' or set(manifest.get('files',{}))!=set(FILES):raise ValueError('Unsupported setup package')
-        sums=manifest['files'] if abi=='arm64' else manifest.get('variants',{}).get(abi,{}).get('files',{})
+        selected=manifest if profile=='g10' else manifest.get('profiles',{}).get(profile,{})
+        sums=selected['files'] if profile=='g10' and abi=='arm64' else selected.get('variants',{}).get(abi,{}).get('files',{})
         if set(sums)!=set(FILES):raise ValueError('Missing ABI-specific setup files')
-        assets={name:('assets/provision/'+name if name.endswith('.sh') else 'assets/hardware/g10-'+abi+'/'+name) for name in FILES}
+        assets={name:('assets/provision/'+('setup-a133.sh' if profile=='a133' and name=='setup-panel.sh' else name) if name.endswith('.sh') else 'assets/hardware/'+profile+'-'+abi+'/'+name) for name in FILES}
         data={name:archive.read(asset) for name,asset in assets.items()}
         for name,content in data.items():
             if len(content)>1024*1024 or hashlib.sha256(content).hexdigest()!=sums[name]:raise ValueError('Setup integrity check failed: '+name)
@@ -23,6 +26,7 @@ def payload(apk,abi='arm64'):
         return data
 def main(argv=None):
     parser=argparse.ArgumentParser(description='Prepare root support, hardware setup and conflicting startup components on a verified G10 panel. Never reboots or tests outputs.')
+    parser.add_argument('--profile',choices=('g10','a133'),default='g10',help='Explicit verified hardware profile; A133 is ARM32 only')
     parser.add_argument('--device',required=True,help='Explicit ADB serial or PANEL_IP:5555')
     parser.add_argument('--apk',type=Path,help='Tuya Wall Panel APK from this setup kit')
     parser.add_argument('--adb',default=shutil.which('adb') or (r'C:\adb\adb.exe' if Path(r'C:\adb\adb.exe').exists() else 'adb'))
@@ -42,7 +46,7 @@ def main(argv=None):
     if ':' in args.device:subprocess.run([args.adb,'connect',args.device],capture_output=True,timeout=20)
     adb('get-state')
     abi=select_abi(adb('shell','getprop','ro.product.cpu.abilist').stdout.decode())
-    data=payload(args.apk,abi)
+    data=payload(args.apk,abi,args.profile)
     if args.app_only:
         adb('install','-r',str(args.apk.resolve()))
         print('APK installed for '+abi+'. No root setup, vendor changes or launcher selection performed.')
@@ -71,7 +75,7 @@ def main(argv=None):
     probe=shell(remote+'/wallpanel-core','--probe')
     if not json.loads(probe.stdout).get('layout_matched'):raise RuntimeError('Unsupported wiring. The APK and vendor setup were not changed.')
     if shell('getenforce').stdout.strip()!=b'Permissive':raise RuntimeError('Additional Android permission policy setup is required. Security settings were not weakened.')
-    print('Verified G10 layout. Installing APK while preserving app settings.',flush=True)
+    print('Verified '+args.profile+' layout. Installing APK while preserving app settings.',flush=True)
     adb('install','-r',str(args.apk.resolve()))
     mode='bootstrap-only' if args.bootstrap_only else 'apply'
     result=shell('/system/bin/sh',remote+'/bootstrap-panel.sh',remote,mode,check=False)

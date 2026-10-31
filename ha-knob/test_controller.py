@@ -8,7 +8,11 @@ from zoneinfo import ZoneInfo
 def module(name,**attrs):
     out=types.ModuleType(name);out.__dict__.update(attrs);sys.modules[name]=out;return out
 try:import aiohttp
-except ImportError:module('aiohttp',ClientTimeout=lambda **kw:kw,ClientError=type('ClientError',(Exception,),{}))
+except ImportError:
+    class ClientError(Exception):pass
+    class ClientResponseError(ClientError):
+        def __init__(self,status):self.status=status
+    module('aiohttp',ClientTimeout=lambda **kw:kw,ClientError=ClientError,ClientResponseError=ClientResponseError)
 for name in ['homeassistant','homeassistant.components','homeassistant.helpers','homeassistant.util']:
     module(name)
 mqtt=module('homeassistant.components.mqtt',async_publish=AsyncMock(),async_subscribe=AsyncMock(return_value=lambda:None))

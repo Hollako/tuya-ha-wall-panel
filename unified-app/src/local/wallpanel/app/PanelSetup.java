@@ -15,9 +15,9 @@ final class PanelSetup {
     static File stage(Context context)throws Exception{
         File parent=context.getFilesDir().getCanonicalFile(),folder=new File(parent,"panel-setup");if(!folder.mkdirs()&&!folder.isDirectory())throw new IOException("Setup folder unavailable");
         if(!folder.getCanonicalFile().getParentFile().equals(parent))throw new IOException("Unsafe setup folder");
-        String abi=NativeAssets.abi(android.os.Build.SUPPORTED_ABIS);String prefix=NativeAssets.prefix("g10",android.os.Build.SUPPORTED_ABIS);
-        JSONObject sums=new JSONObject(new String(bytes(context.getAssets().open("provision/manifest.json"),16384),"UTF-8")).getJSONObject("variants").getJSONObject(abi).getJSONObject("files");
-        for(String name:FILES){String asset=name.endsWith(".sh")?"provision/"+name:prefix+name;byte[] content=bytes(context.getAssets().open(asset),1024*1024);if(!sha(content).equals(sums.getString(name)))throw new IOException("Setup integrity check failed");
+        String abi=NativeAssets.abi(android.os.Build.SUPPORTED_ABIS);String selected=new ConfigStore(context).load().profile;String profile=selected.equals("a133")?"a133":"g10";String prefix=NativeAssets.prefix(profile,android.os.Build.SUPPORTED_ABIS);
+        JSONObject manifest=new JSONObject(new String(bytes(context.getAssets().open("provision/manifest.json"),16384),"UTF-8"));JSONObject sums=(profile.equals("g10")?manifest:manifest.getJSONObject("profiles").getJSONObject(profile)).getJSONObject("variants").getJSONObject(abi).getJSONObject("files");
+        for(String name:FILES){String asset=name.endsWith(".sh")?"provision/"+(profile.equals("a133")&&name.equals("setup-panel.sh")?"setup-a133.sh":name):prefix+name;byte[] content=bytes(context.getAssets().open(asset),1024*1024);if(!sha(content).equals(sums.getString(name)))throw new IOException("Setup integrity check failed");
             File file=new File(folder,name);FileOutputStream out=new FileOutputStream(file);try{out.write(content);out.getFD().sync();}finally{out.close();}if(!file.setExecutable(true,true))throw new IOException("Setup file permissions failed");
         }return folder;
     }
@@ -37,7 +37,7 @@ final class PanelSetup {
     static JSONObject check(Context context)throws Exception{
         try{JSONObject status=rpc("CHECK");if(status.optInt("setup_protocol",0)>=2){status.put("provider","service");return status;}}catch(Exception ignored){}
         JSONObject status=new JSONObject();status.put("v",1);status.put("ok",true);status.put("root",false);status.put("provider","bootstrap_required");
-        try{File folder=stage(context);Command result=run(new String[]{new File(folder,"wallpanel-core").getAbsolutePath(),"--probe"},8);JSONObject probe=new JSONObject(result.text.trim());status.put("candidate_g10",probe.optBoolean("layout_matched",false));}catch(Exception ignored){status.put("candidate_g10",false);}
+        try{File folder=stage(context);Command result=run(new String[]{new File(folder,"wallpanel-core").getAbsolutePath(),"--probe"},8);JSONObject probe=new JSONObject(result.text.trim());status.put("candidate_g10",probe.optString("profile").equals("g10")&&probe.optBoolean("layout_matched",false));status.put("candidate_a133",probe.optString("profile").equals("a133")&&probe.optBoolean("layout_matched",false));}catch(Exception ignored){status.put("candidate_g10",false);}
         return status;
     }
     static JSONObject change(Context context,boolean restore)throws Exception{

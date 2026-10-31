@@ -41,7 +41,7 @@ final class NativeWorker implements Closeable {
     void start(final Context context,final PanelConfig config,final Listener listener){
         new Thread(new Runnable(){public void run(){String reason="Hardware worker stopped";
             try{
-                if(!"g10".equals(config.profile))throw new IOException("Select the G10 profile first");
+                if(!"g10".equals(config.profile)&&!"a133".equals(config.profile))throw new IOException("Select G10 or A133 first");
                 File folder=prepare(context,config);if(closing)return;
                 socket=PrivilegeChannel.open("WORKER\n");
                 if(closing){close();return;}

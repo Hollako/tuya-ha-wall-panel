@@ -1,4 +1,10 @@
 /* Shared G10 input handling: vendor press/hold plus physical rotary observer. */
+#ifndef WP_KEY_LEFT
+#define WP_KEY_LEFT KEY_FN_F1
+#define WP_KEY_RIGHT KEY_FN_F2
+#define WP_KEY_PRESS KEY_FN_F3
+#define WP_KEY_HOLD KEY_FN_F8
+#endif
 static int input_device(const char *wanted) {
     for(int i=0;i<24;i++) {
         char path[128],name[128];snprintf(path,sizeof(path),"/sys/class/input/event%d/device/name",i);
@@ -19,11 +25,11 @@ static int process_input(int fd,int source,int publish_events) {
             struct input_event *e=&events[i];if(e->type!=EV_KEY||e->value!=1)continue;
             const char *event=NULL;
             if(source==0) {
-                if(rotary_fd>=0&&(e->code==KEY_FN_F1||e->code==KEY_FN_F2))continue;
-                if(e->code==KEY_FN_F1)event="rotate_left";
-                else if(e->code==KEY_FN_F2)event="rotate_right";
-                else if(e->code==KEY_FN_F3)event="press";
-                else if(e->code==KEY_FN_F8)event="long_press";
+                if(rotary_fd>=0&&(e->code==WP_KEY_LEFT||e->code==WP_KEY_RIGHT))continue;
+                if(e->code==WP_KEY_LEFT)event="rotate_left";
+                else if(e->code==WP_KEY_RIGHT)event="rotate_right";
+                else if(e->code==WP_KEY_PRESS)event="press";
+                else if(e->code==WP_KEY_HOLD)event="long_press";
             } else if(e->code==KEY_DOLLAR)event="button_press";
             if(!event)continue;
             if(publish_events && net>=0) {
@@ -31,8 +37,8 @@ static int process_input(int fd,int source,int publish_events) {
 #ifdef WP_KNOB_ACTIVITY
                     WP_KNOB_ACTIVITY();
 #endif
-                    if(e->code==KEY_FN_F3)gesture_pulse_at(0,e->code,ms());
-                    else if(e->code==KEY_FN_F8)gesture_hold(0,e->code);
+                    if(e->code==WP_KEY_PRESS)gesture_pulse_at(0,e->code,ms());
+                    else if(e->code==WP_KEY_HOLD)gesture_hold(0,e->code);
                     else {gesture_flush(0);gesture_publish(0,event,e->code);}
                     if(gesture_publish_failed)return -1;
                 } else {

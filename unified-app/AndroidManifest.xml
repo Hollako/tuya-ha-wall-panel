@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.wallpanel.app" android:versionCode="63" android:versionName="0.29.1">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="local.wallpanel.app" android:versionCode="83" android:versionName="0.34.4">
   <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="28" />
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
@@ -16,7 +16,8 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-  <application android:name=".WallPanelApplication" android:extractNativeLibs="true" android:label="Tuya HA Wall Panel" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+  <application android:name=".WallPanelApplication" android:extractNativeLibs="true" android:label="SmartWay Panel" android:allowBackup="false" android:usesCleartextTraffic="true" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:supportsRtl="true">
+    <activity android:name="com.wallpanel.audioreceiver.BluetoothConnectActivity" android:exported="false" />
     <service android:name=".SettingsBackService" android:label="Wall Panel settings Back button" android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE" android:exported="true">
       <intent-filter><action android:name="android.accessibilityservice.AccessibilityService" /></intent-filter>
       <meta-data android:name="android.accessibilityservice" android:resource="@xml/settings_back_service" />
@@ -26,6 +27,7 @@
     <activity android:name="com.wallpanel.multiroom.GroupSettingsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
     <activity android:name="com.wallpanel.multiroom.GroupManagerActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
     <activity android:name=".ReceiverSettingsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
+    <activity android:name=".BluetoothSettingsActivity" android:exported="false" android:windowSoftInputMode="stateAlwaysHidden|adjustResize" />
     <service android:name=".ExternalAppService" android:exported="false" />
     <service android:name=".BridgeService" android:exported="false" />
     <service android:name=".SipService" android:exported="false" />

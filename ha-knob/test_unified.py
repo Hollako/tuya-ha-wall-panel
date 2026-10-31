@@ -71,6 +71,16 @@ class HardwareTests(unittest.IsolatedAsyncioTestCase):
         t.mqtt.async_publish.assert_not_awaited()
         await entity.async_set_value('25°C');await entity.async_set_value('')
         self.assertEqual(t.mqtt.async_publish.await_count,2)
+    async def test_a133_no_led_capability_disables_only_led_control(self):
+        spec=next(s for s in hardware.SPECS if s.key=='knob_led_color')
+        self.assertTrue(self.c.hardware.available(spec.availability))
+        self.report('/knob/controller/capabilities',json.dumps({'knob_led':False,'local_media':True}))
+        self.assertFalse(self.c.hardware.available(spec.availability))
+        self.assertTrue(self.c.hardware.available('display'))
+        entity=select.HardwareSelect(self.c,spec)
+        with self.assertRaises(t.controller.HomeAssistantError):await entity.async_select_option('White')
+        t.mqtt.async_publish.assert_not_awaited()
+
     async def test_led_rejects_unverified_colors_and_off(self):
         spec=next(s for s in hardware.SPECS if s.key=='knob_led_color')
         entity=select.HardwareSelect(self.c,spec)

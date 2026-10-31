@@ -1,0 +1,12 @@
+#define STATE "/data/local/wallpanel/a133-state"
+#define DP_STATE STATE
+#define WP_BINDINGS_PATH STATE "/button-local-bindings"
+#define WP_LEASE_PATH STATE "/mcu.lock"
+#define WP_KNOB_REQUEST STATE "/knob-request.lock"
+#define WP_KNOB_RESOURCE STATE "/knob-resource.lock"
+#define WP_AUDIO_REQUEST STATE "/audio-request.lock"
+#define WP_AUDIO_RESOURCE STATE "/audio-resource.lock"
+#define WP_DISPLAY_REQUEST STATE "/display-request.lock"
+#define WP_DISPLAY_RESOURCE STATE "/display-resource.lock"
+#define WP_MANAGEMENT_REQUEST STATE "/management-request.lock"
+#define WP_MANAGEMENT_RESOURCE STATE "/management-resource.lock"

@@ -1,4 +1,17 @@
-# Tuya HA Wall Panel — unified app
+# SmartWay Panel — unified app
+
+Pending local branding release: **SmartWay Panel 0.32.3**, with dedicated
+**Audio Streamer 1.9.2**. These names are not installed on the lab panels yet.
+
+Current controls update: **0.32.2**, paired with dedicated Audio Receiver **1.9.1**.
+This adds spacing between settings action groups and moves the pairing and Android
+Bluetooth buttons into Bluetooth settings. Automatic Bluetooth stream recovery is
+still pending; reconnecting the phone with the group active is the current workaround.
+Version 0.32.1 fixes the missing packaged settings page and checks all shared HTML
+pages in the signed APK before a build can succeed.
+See [shared settings, playback, volume and network recovery](SETTINGS_AND_AUDIO_0_32.md).
+The app and `http://PANEL_IP:8099/settings` now use one settings system; the web and
+discovery service starts after boot independently of AirPlay enablement.
 
 Version **0.24.4** matches the dedicated receiver's embedded status panel, Check
 PTP Helper and View Logs buttons. The shared status formatter keeps both products
@@ -9,7 +22,7 @@ enable/port/access-token settings. Enable the web page and save to access it at
 the HA integration continues using MQTT. Settings include Back/Hide keyboard
 controls and an interface dropdown; default tunnel interfaces are hidden.
 
-Current local build **0.22.0** adds [installed-app mode](EXTERNAL_APP_MODE.md) with app selection, administrator hotspot, root-backed task recovery and intercom return. ARM32 and ARM64 remain in one APK. [Architecture and A133 status](MULTI_ABI.md): Dashboard/SIP profile available; A133 direct hardware remains disabled pending verification. Installed on the G10 with its web dashboard still selected; external-app physical checks are pending. The A133 remains unchanged.
+Current local build **0.31.0** includes a separate A133 Android 11 ARM32 hardware adapter. See [A133 commissioning](A133_ADAPTER.md). G10 native payloads remain unchanged. The A133 adapter is built and its read-only layout probe matches the test panel; installation and full unified-app hardware commissioning are pending.
 
 Build **0.19.0** / HA **1.16.0** adds [direct local media knob control](LOCAL_MEDIA_KNOB.md): rotate volume, press mute, hold play/pause, double press next page. The panel's own Audio entity uses its local audio engine and knob feedback; other media entities use HA.
 
@@ -227,3 +240,5 @@ only after a tap. It is hidden on the dashboard, installed apps and intercom UI.
 Prepare / repair enables it while preserving other accessibility services;
 restore restores the prior accessibility settings. Without root preparation,
 use Enable floating Back button in setup and enable it in Android accessibility.
+
+App audio grouping is described in [APP_AUDIO.md](../shared/multiroom/APP_AUDIO.md).

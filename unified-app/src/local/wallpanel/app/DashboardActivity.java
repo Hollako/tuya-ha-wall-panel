@@ -89,7 +89,7 @@ public class DashboardActivity extends Activity {
         releaseSystemUi();
         if(setupShown)return;releaseWeb();setupShown=true;url=null;loaded=false;getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(32,32,32,32);
-        TextView title=new TextView(this);title.setText("Tuya HA Wall Panel");title.setTextSize(28);layout.addView(title);
+        TextView title=new TextView(this);title.setText("SmartWay Panel");title.setTextSize(28);layout.addView(title);
         TextView note=new TextView(this);note.setText("Set up a dashboard URL and enable the Dashboard module. Administrator settings remain available without Wi-Fi or Home Assistant.");note.setTextSize(18);layout.addView(note);
         Button setup=new Button(this);setup.setText("Open setup");setup.setOnClickListener(new View.OnClickListener(){public void onClick(View v){openSetup();}});layout.addView(setup);
         setContentView(layout);immersive();openSetup();

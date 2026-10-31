@@ -16,9 +16,13 @@ static char bl_last_feedback[256];
 #endif
 static long long bl_now(void){struct timespec t;clock_gettime(CLOCK_MONOTONIC,&t);return (long long)t.tv_sec*1000+t.tv_nsec/1000000;}
 static int bl_read_actual(void){
+#ifdef BL_READ_ACTUAL
+    return BL_READ_ACTUAL();
+#else
     FILE *f=fopen(BL_BRIGHTNESS_PATH,"r");if(!f)return -1;char b[128];char *ok=fgets(b,sizeof(b),f);fclose(f);if(!ok)return -1;
     char *p=b;while(*p&&!isdigit((unsigned char)*p)&&*p!='-')p++;char *end;errno=0;long value=strtol(p,&end,10);
     if(p==end)return -1;while(isspace((unsigned char)*end))end++;return errno||*end||value<0||value>255?-1:(int)value;
+#endif
 }
 #ifndef BL_WRITE
 static int bl_write(int value){int fd=open(BL_BRIGHTNESS_PATH,O_WRONLY|O_CLOEXEC);if(fd<0)return -1;char b[24];int n=snprintf(b,sizeof(b),"%d\n",value);int ok=write(fd,b,n)==n;close(fd);return ok?0:-1;}
@@ -44,7 +48,16 @@ static void bl_close(void){
     for(int i=0;i<bl_count;i++)close(bl_inputs[i].fd);bl_count=0;bl_grabbed=bl_touch=bl_release_pending=bl_manual_off=0;bl_release_deadline=0;
     bl_last_feedback[0]=0;
 }
-static int bl_name_allowed(const char *s){return !strcmp(s,"goodix-ts")||!strcmp(s,"rk8xx_pwrkey")||!strcmp(s,"gpio_ir_recv")||!strcmp(s,"adc-keys");}
+static int bl_name_allowed(const char *s){
+#ifdef BL_NAME_ALLOWED
+    return BL_NAME_ALLOWED(s);
+#else
+    return !strcmp(s,"goodix-ts")||!strcmp(s,"rk8xx_pwrkey")||!strcmp(s,"gpio_ir_recv")||!strcmp(s,"adc-keys");
+#endif
+}
+#ifndef BL_TOUCH_NAME
+#define BL_TOUCH_NAME "goodix-ts"
+#endif
 static int bl_open(int app){
     bl_app=app;bl_count=0;int touch_found=0;bl_actual=bl_read_actual();if(bl_actual<0)return -1;
     int saved=dp_integer(DP_STATE"/display-brightness",1,255);if(saved>0)bl_normal=saved;if(dp_load(&bl_policy))return -1;
@@ -52,7 +65,7 @@ static int bl_open(int app){
         char path[256],name[128];snprintf(path,sizeof(path),BL_INPUT_SYS"/event%d/device/name",i);FILE *f=fopen(path,"r");if(!f)continue;
         char *ok=fgets(name,sizeof(name),f);fclose(f);if(!ok)continue;name[strcspn(name,"\r\n")]=0;if(!bl_name_allowed(name))continue;
         snprintf(path,sizeof(path),BL_INPUT_DEV"/event%d",i);int fd=open(path,O_RDONLY|O_NONBLOCK|O_CLOEXEC);if(fd<0){bl_close();return -1;}
-        bl_inputs[bl_count++]=(struct pollfd){.fd=fd,.events=POLLIN};if(!strcmp(name,"goodix-ts"))touch_found=1;
+        bl_inputs[bl_count++]=(struct pollfd){.fd=fd,.events=POLLIN};if(!strcmp(name,BL_TOUCH_NAME))touch_found=1;
     }
     if(!touch_found){bl_close();return -1;}
     bl_phase=bl_actual==0?2:bl_actual<bl_normal?1:0;bl_activity=bl_now();bl_manual_off=bl_phase==2;

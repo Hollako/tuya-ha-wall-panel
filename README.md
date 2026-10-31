@@ -7,10 +7,11 @@ dashboard, knob, buttons, relays, display, audio and SIP video intercom control.
 
 [ARM32/ARM64 build and hardware status](unified-app/MULTI_ABI.md).
 
-**Release v1.18.0:** HA integration **1.18.0**, unified Android app **0.23.0**,
-and standalone Audio Receiver **1.2.0**. Both APKs include ARM32 and ARM64.
+**Current source:** HA integration **1.26.1**, **SmartWay Panel 0.34.4**,
+and dedicated **Audio Streamer 1.11.3**. Both APKs include ARM32 and ARM64.
+Source versions can be newer than the downloadable release assets.
 
-**[Download APKs and installation files](https://github.com/Hollako/tuya-ha-wall-panel/releases/tag/v1.18.0)**
+**[Download published APKs and installation files](https://github.com/Hollako/tuya-ha-wall-panel/releases)**
 — open **Assets** below the release notes:
 
 - `tuya-wall-panel-0.23.0.apk`: unified dashboard, hardware, SIP and optional AirPlay.
@@ -53,7 +54,12 @@ require Home Assistant 2026.3 or newer. No cloud service is required by this pro
 - Two relays, with optional local button assignments that work offline.
 - Main display brightness, dim/off timers, instant wake and knob display controls.
 - Local knob-only activity wake/white LED, returning to red LED and the configured idle screensaver after 15 seconds.
-- Audio media player, volume/mute, source selection and amplifier routing.
+- One media player per panel with volume/mute, source selection, local music browsing,
+  grouping and saved-group selection. Confirmed membership feedback arrives over MQTT.
+- Verified MQTT API-address announcements keep HA's group connection and device Visit
+  link current when the unified panel's IP changes.
+- Shared room-volume control and fine standalone Bluetooth output adjustment.
+- Shared web/app settings, configurable room groups and independent room timing.
 - Shared AirPlay receiver engine, local media/knob feedback, live HA timing/trim controls and local SIP call interruption.
 - Dashboard URL, Open setup, Reload dashboard, Restart app, reboot and screenshots.
 - Optional SIP intercom with two-way audio, ringtone and an uncropped RTSP preview.
@@ -102,8 +108,8 @@ panel's MQTT, SIP, camera or HA credentials.
 
 ## Development
 
-Current development builds: unified app **0.29.1**, dedicated audio receiver
-**1.7.1**, and HA integration **1.22.0**. New features include panel discovery,
+Current development builds: unified app **0.30.0**, dedicated audio receiver
+**1.7.1**, and HA integration **1.22.1**. New features include panel discovery,
 saved audio groups, independent room volume/mute/timing, local music browsing
 through the web UI and HA, AirPlay transport/artwork improvements, and settings
 navigation improvements. See [group documentation](shared/multiroom/GROUPS.md).

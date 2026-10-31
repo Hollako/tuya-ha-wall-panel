@@ -13,7 +13,7 @@ with tempfile.TemporaryDirectory(dir=root/'test-classes',prefix='settings-back-'
 public class SettingsBackTest {
  static void check(boolean value){if(!value)throw new AssertionError();}
  public static void main(String[] args){
-  for(String name:new String[]{"MainActivity","PanelSetupActivity","NetworkSettingsActivity","SipSettingsActivity","ReceiverSettingsActivity"})check(SettingsBackPolicy.setup("local.wallpanel.app."+name));
+  for(String name:new String[]{"MainActivity","PanelSetupActivity","NetworkSettingsActivity","SipSettingsActivity","ReceiverSettingsActivity","BluetoothSettingsActivity"})check(SettingsBackPolicy.setup("local.wallpanel.app."+name));
   for(String name:new String[]{"DashboardActivity","HomeActivity","IntercomCallActivity","SettingsBackService$1"})check(!SettingsBackPolicy.setup("local.wallpanel.app."+name));
   check(!SettingsBackPolicy.setup(null));check(!SettingsBackPolicy.setup("other.MainActivity"));
   check(SettingsBackPolicy.androidSettings("com.android.settings"));check(SettingsBackPolicy.androidSettings("com.android.tv.settings"));

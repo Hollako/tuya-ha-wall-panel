@@ -15,7 +15,7 @@ class AbiTests(unittest.TestCase):
                     base='assets/hardware/'+profile+'-'+abi+'/'
                     metadata=json.loads(z.read(base+'manifest.json'))
                     self.assertEqual(metadata['profile'],profile);self.assertEqual(metadata['abi'],abi)
-                    self.assertEqual(metadata['runtime_ready'],profile=='g10')
+                    self.assertEqual(metadata['runtime_ready'],profile=='g10' or abi=='arm32')
                     for name,key in (('wallpanel-core','sha256'),('wallpanel-capture','capture_sha256'),('wallpanel-privilege','privilege_sha256')):
                         binary=z.read(base+name)
                         self.assertEqual(binary[:4],b'\x7fELF');self.assertEqual(binary[4],klass)
@@ -24,6 +24,11 @@ class AbiTests(unittest.TestCase):
                     self.assertIn(base+'wallpanel-system-ui.jar',z.namelist())
             self.assertEqual(payload(self.apk,'arm32')['wallpanel-core'][4],1)
             self.assertEqual(payload(self.apk,'arm64')['wallpanel-core'][4],2)
+            self.assertEqual(payload(self.apk,'arm32','a133')['wallpanel-core'][4],1)
+            self.assertNotEqual(payload(self.apk,'arm32','a133')['wallpanel-core'],payload(self.apk,'arm32')['wallpanel-core'])
+    def test_a133_refuses_unverified_64bit_hardware_profile(self):
+        with self.assertRaises(ValueError):payload(self.apk,'arm64','a133')
+
     def test_selection_never_guesses_an_unsupported_abi(self):
         self.assertEqual(select_abi('armeabi-v7a,armeabi'),'arm32')
         self.assertEqual(select_abi('armeabi-v7a,arm64-v8a'),'arm64')

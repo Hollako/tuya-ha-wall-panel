@@ -2,7 +2,9 @@
  * This worker has no network; MQTT publications become private JSON pipe events. */
 #include <stdarg.h>
 #include <linux/input.h>
+#ifndef STATE
 #define STATE "/data/local/panalume"
+#endif
 #define BASE ""
 static int dry_run,net,gesture_publish_failed;
 static int core_knob_owner=-1,core_knob_input=-1,core_knob_started;
@@ -45,7 +47,11 @@ static int knob_notice(const char *format,...){
 #define printf knob_notice
 #define running core_alive
 #include "../../panel-172.16.1.26/panel-knob-display.h"
+#ifdef WP_ROTARY_HEADER
+#include WP_ROTARY_HEADER
+#else
 #include "../../panel-172.16.1.26/panel-rotary.h"
+#endif
 #include "../../panel-172.16.1.26/panel-input.h"
 #undef puts
 #undef printf
@@ -122,6 +128,9 @@ static int core_knob_display_ready(void){return core_knob_started&&knob_ready;}
 static void core_knob_close(void){
     gesture_cancel(0);rotary_cleanup();if(core_knob_input>=0)close(core_knob_input);core_knob_input=-1;
     if(knob_fb>=0)close(knob_fb);knob_fb=-1;knob_ready=0;core_knob_started=0;
+#ifdef WP_A133
+    a133_knob_restore();
+#endif
     core_knob_activity_until=0;core_knob_activity_last=-1;core_knob_led_physical=-1;
 }
 static void core_knob_tick(void){
@@ -129,8 +138,17 @@ static void core_knob_tick(void){
         core_knob_owner=wp_lock_acquire(WP_KNOB_RESOURCE);if(core_knob_owner<0)return;
     }
     if(!core_knob_started){
+#ifdef WP_A133
+        if(core_config.knob_display&&a133_knob_snapshot()){core_alive=0;core_exit_code=11;return;}
+#endif
         core_knob_started=1;
-        if(core_config.knob_input){core_knob_input=input_device("knod-aispeech");rotary_init();}
+#ifndef WP_KNOB_INPUT_NAME
+#define WP_KNOB_INPUT_NAME "knod-aispeech"
+#endif
+        if(core_config.knob_input){core_knob_input=input_device(WP_KNOB_INPUT_NAME);rotary_init();}
+#ifdef WP_A133
+        if(core_config.knob_input&&(core_knob_input<0||rotary_fd<0)){core_exit_code=12;core_alive=0;return;}
+#endif
         if(core_config.knob_display){core_knob_activity_load();core_knob_ring_load();saver_load();knob_physical=-1;knob_check_at=0;knob_dirty=knob_report=1;knob_init();}
         core_status(0);
     }
@@ -168,6 +186,9 @@ static int core_knob_payload(const char *field,const char *payload){
     return !strcmp(field,"led")&&(!strcmp(payload,"Red")||!strcmp(payload,"White"));
 }
 static int core_knob_command(const char *field,const char *payload){
+#ifdef WP_A133
+    if(!strcmp(field,"led"))return -1;
+#endif
     if(!core_config.knob_display||!knob_ready||!core_knob_payload(field,payload))return -1;
     if(!strcmp(field,"artwork"))return core_knob_art_load(payload);
     if(!strcmp(field,"speaker_mute")){

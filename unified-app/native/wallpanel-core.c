@@ -6,6 +6,9 @@
 #include <stdint.h>
 #include <errno.h>
 #include "core-config.h"
+#ifdef WP_A133
+#include "a133-backend.h"
+#endif
 #include "../../wallpanel-hardware/g10_uart.h"
 #include "../../wallpanel-hardware/g10_profile.h"
 #include "../../wallpanel-hardware/mcu-lease.h"
@@ -16,7 +19,9 @@
 #define WP_UART_OPEN g10_uart_open
 #define WP_UART_SEND g10_uart_send
 #define WP_UART_CLOSE g10_uart_close
+#ifndef WP_PROFILE_VALID
 #define WP_PROFILE_VALID g10_profile_valid
+#endif
 #endif
 static volatile sig_atomic_t core_alive=1;
 static int core_exit_code;
@@ -39,7 +44,13 @@ static int core_output(const char *line){
 #endif
 #include "core-health.h"
 #include "../../panel-172.16.1.26/panel-gestures.h"
-static int core_ready(long long now){return core_uart.fd>=0&&core_values[0]>=0&&core_values[1]>=0&&now-core_seen[0]<45000&&now-core_seen[1]<45000;}
+static int core_ready(long long now){
+#ifdef WP_A133
+    (void)now;return core_online&&(!core_config.relays||(core_values[0]>=0&&core_values[1]>=0));
+#else
+    return core_uart.fd>=0&&core_values[0]>=0&&core_values[1]>=0&&now-core_seen[0]<45000&&now-core_seen[1]<45000;
+#endif
+}
 static int core_knob_input_ready(void);
 static int core_knob_display_ready(void);
 static int core_audio_owned(void);
@@ -53,7 +64,11 @@ static void core_status(unsigned long request){
 static void core_result(unsigned long id,int good,const char *error){
     char line[256];snprintf(line,sizeof(line),"{\"v\":1,\"type\":\"result\",\"id\":%lu,\"ok\":%s,\"confirmed\":false,\"error\":\"%s\"}\n",id,good?"true":"false",error);WP_OUTPUT(line);
 }
+#ifdef WP_A133
+#include "a133-audio.h"
+#else
 #include "audio-core.h"
+#endif
 #include "display-core.h"
 #include "management-core.h"
 static void core_bindings_emit(void){
@@ -77,6 +92,10 @@ static int core_bindings_save(int proposed[4][2]){
     if(!ok||rename(tmp,WP_BINDINGS_PATH)){unlink(tmp);return -1;}return 0;
 }
 static void core_disconnect(void){
+#ifdef WP_A133
+    core_online=0;core_values[0]=core_values[1]=-1;core_status(0);
+#else
+
     if(WP_UART_CLOSE(&core_uart,core_direction)){
         core_exit_code=8;core_alive=0;WP_OUTPUT("{\"v\":1,\"type\":\"error\",\"error\":\"uart_cleanup_failed\"}\n");
     }
@@ -84,18 +103,33 @@ static void core_disconnect(void){
     memset(&core_parser,0,sizeof(core_parser));for(int b=1;b<=4;b++)gesture_cancel(b);
     for(int i=0;i<2;i++){core_values[i]=-1;core_seen[i]=0;core_wait_query[i]=0;core_targets[i]=-1;core_target_until[i]=0;}
     core_early_query=0;core_status(0);
+
+#endif
 }
 static int core_send(const unsigned char frame[7]){
+#ifdef WP_A133
+    (void)frame;return -1; /* No UART on this board. */
+#else
+
     /* This worker exposes no night-light, binding-default or arbitrary-frame op. */
     if(core_uart.fd<0||WP_UART_SEND(&core_uart,core_direction,frame)){core_disconnect();return -1;}return 0;
+
+#endif
 }
 static int core_relay(int channel,int value,long long now){
+#ifdef WP_A133
+    if(!core_config.relays||!core_ready(now)||a133_relay_write(channel,value))return -1;
+    core_values[channel-1]=value;core_seen[channel-1]=now;core_status(0);return 0;
+#else
+
     if(!core_config.relays||!core_ready(now))return -1;
     unsigned char frame[7];if(g10_relay(frame,channel,value))return -1;
     core_wait_query[channel-1]=1;
     if(core_send(frame))return -1;
     if(!core_early_query)core_early_query=now+500;
     return 0;
+
+#endif
 }
 static void gesture_publish(int control,const char *event,unsigned int code){
     if(core_alive&&control==0&&core_config.knob_input){
@@ -136,6 +170,13 @@ static void core_receive(void){
     }
 }
 static void core_tick(long long now){
+#ifdef WP_A133
+    if(now>=core_retry){core_retry=now+1000;int before0=core_values[0],before1=core_values[1],online=core_online;
+        core_online=1;if(core_config.relays)for(int i=0;i<2;i++){core_values[i]=a133_relay_read(i+1);core_seen[i]=now;if(core_values[i]<0)core_online=0;}
+        if(online!=core_online||before0!=core_values[0]||before1!=core_values[1])core_status(0);
+    }if(core_alive)gestures_tick_at(now);
+#else
+
     if(!core_config.buttons&&!core_config.relays)return;
     if(core_uart.fd<0){
         if(now<core_retry)return;core_retry=now+3000;
@@ -156,6 +197,8 @@ static void core_tick(long long now){
         for(int i=0;i<2;i++){core_values[i]=-1;core_targets[i]=-1;core_target_until[i]=0;}core_status(0);
     }
     if(core_alive)gestures_tick_at(now);
+
+#endif
 }
 static void core_command(const char *line){
     unsigned long id=0;unsigned channel=0,value=0;int end=0;char canonical[128];
@@ -238,7 +281,11 @@ static void core_command(const char *line){
     unsigned enabled_buttons=0,enabled_relays=0;
     if(sscanf(line,"v1 %lu modules %u %u%n",&id,&enabled_buttons,&enabled_relays,&end)==3&&end>0){
         snprintf(canonical,sizeof(canonical),"v1 %lu modules %u %u",id,enabled_buttons,enabled_relays);
-        if(strcmp(canonical,line)||!id||id>2147483647ul||enabled_buttons>1||enabled_relays>1){core_result(0,0,"invalid_command");return;}
+        if(strcmp(canonical,line)||!id||id>2147483647ul||enabled_buttons>1||enabled_relays>1
+#ifdef WP_A133
+           ||enabled_buttons!=0
+#endif
+        ){core_result(0,0,"invalid_command");return;}
         if(id<=core_last_request){core_result(id,0,"duplicate_or_old_request");return;}core_last_request=id;
         core_config.buttons=(int)enabled_buttons;core_config.relays=(int)enabled_relays;gestures_cancel_all();
         for(int i=0;i<2;i++){core_targets[i]=-1;core_target_until[i]=0;}
@@ -251,6 +298,9 @@ static void core_command(const char *line){
         snprintf(canonical,sizeof(canonical),"v1 %lu bind %u %u %u",id,channel,single,doubled);
         if(strcmp(canonical,line)||!id||id>2147483647ul||channel<1||channel>4||single>2||doubled>2){core_result(0,0,"invalid_command");return;}
         if(id<=core_last_request){core_result(id,0,"duplicate_or_old_request");return;}core_last_request=id;
+#ifdef WP_A133
+        core_last_request=id;core_result(id,0,"buttons_not_fitted");return;
+#endif
         if(!core_leased){core_result(id,0,"binding_persistence_unavailable");return;}
         int proposed[4][2];memcpy(proposed,core_config.bindings,sizeof(proposed));proposed[channel-1][0]=(int)single;proposed[channel-1][1]=(int)doubled;
         if(memcmp(proposed,core_config.bindings,sizeof(proposed))){
@@ -274,6 +324,12 @@ static void core_command(const char *line){
 }
 static void core_signal(int sig){(void)sig;core_alive=0;}
 int main(int argc,char **argv){
+#ifdef WP_A133
+    if(argc==2&&(!strcmp(argv[1],"--probe")||!strcmp(argv[1],"--describe"))){
+        int valid=sizeof(unsigned long)==4&&a133_profile_valid();
+        printf("{\"v\":1,\"profile\":\"a133\",\"adapter\":\"a133-direct-gpio\",\"layout_matched\":%s,\"buttons\":0,\"relays\":2,\"knob_framebuffer\":1,\"knob_led\":false,\"network\":false,\"outputs_written\":false}\n",valid?"true":"false");return 0;
+    }
+#else
     if(argc==2&&!strcmp(argv[1],"--probe")){
         int matched=WP_PROFILE_VALID()&&access("/dev/ttyS2",F_OK)==0&&access(core_direction,F_OK)==0;
         printf("{\"v\":1,\"profile\":\"g10\",\"layout_matched\":%s,\"buttons\":%d,\"relays\":%d,\"knob\":%s,\"hardware_accessed\":false}\n",matched?"true":"false",matched?4:0,matched?2:0,matched?"true":"false");return 0;
@@ -281,9 +337,14 @@ int main(int argc,char **argv){
     if(argc==2&&!strcmp(argv[1],"--describe")){
         puts("{\"v\":1,\"adapter\":\"g10-direct-uart\",\"profile\":\"g10\",\"profile_verified\":false,\"buttons\":4,\"relays\":2,\"single_double_ms\":400,\"button_hold\":false,\"network\":false,\"root_required\":true}");return 0;
     }
+#endif
     if(argc!=3||(strcmp(argv[1],"--run")&&strcmp(argv[1],"--run-leased")&&strcmp(argv[1],"--check-config"))){fprintf(stderr,"Use --describe, --check-config FILE, --run FILE or --run-leased FILE\n");return 2;}
     if(core_config_read(argv[2],&core_config)){fprintf(stderr,"Invalid or unsafe hardware configuration\n");return 3;}
     if(!strcmp(argv[1],"--check-config")){puts("{\"v\":1,\"configuration_valid\":true,\"hardware_accessed\":false}");return 0;}
+#ifdef WP_A133
+    if(sizeof(unsigned long)!=4||!a133_profile_valid()||a133_conflict()||core_config.buttons){fprintf(stderr,"A133 profile mismatch or competing Tuya owner; no hardware activated\n");return 6;}
+    for(int b=0;b<4;b++)for(int g=0;g<2;g++)if(core_config.bindings[b][g])return 3;
+#endif
     if(geteuid()!=0){fprintf(stderr,"Privileged hardware activation requires root\n");return 4;}
     int lease=-1,knob_lease=-1,audio_lease=-1;core_leased=!strcmp(argv[1],"--run-leased");
     if(core_leased){
@@ -320,5 +381,9 @@ int main(int argc,char **argv){
     }
     core_management_close();core_display_close();core_audio_close();if(core_audio_owner>=0)close(core_audio_owner);if(audio_lease>=0)close(audio_lease);
     core_knob_close();if(core_knob_owner>=0)close(core_knob_owner);if(knob_lease>=0)close(knob_lease);
-    core_disconnect();if(lease>=0)close(lease);return core_exit_code;
+    core_disconnect();if(lease>=0)close(lease);
+#ifdef WP_A133
+    a133_restore();
+#endif
+    return core_exit_code;
 }

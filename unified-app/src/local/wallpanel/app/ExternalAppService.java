@@ -25,7 +25,7 @@ public final class ExternalAppService extends Service {
         if(administrator||!configured(this)){stopSelf();return START_NOT_STICKY;}
         NotificationManager manager=(NotificationManager)getSystemService(NOTIFICATION_SERVICE);Notification.Builder notice;
         if(Build.VERSION.SDK_INT>=26){manager.createNotificationChannel(new NotificationChannel("wallpanel_appmode","Wall Panel app mode",NotificationManager.IMPORTANCE_LOW));notice=new Notification.Builder(this,"wallpanel_appmode");}else notice=new Notification.Builder(this);
-        startForeground(44,notice.setSmallIcon(android.R.drawable.ic_menu_manage).setContentTitle("Tuya HA Wall Panel").setContentText("App mode active").setOngoing(true).build());
+        startForeground(44,notice.setSmallIcon(android.R.drawable.ic_menu_manage).setContentTitle("SmartWay Panel").setContentText("App mode active").setOngoing(true).build());
         if(!Settings.canDrawOverlays(this)){status("Grant the administrator hotspot overlay permission in setup.");stopSelf();return START_NOT_STICKY;}
         final String desired;
         try{desired=AppModePolicy.packageName(store.dashboardSettings().appPackage);if(getPackageManager().getLaunchIntentForPackage(desired)==null)throw new IllegalArgumentException();}

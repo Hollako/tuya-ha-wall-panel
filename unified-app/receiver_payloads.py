@@ -4,6 +4,13 @@ import hashlib,json,struct
 
 ROOT=Path(__file__).resolve().parent.parent
 PINNED=ROOT/'shared/audio-receiver/native-payloads.json'
+WEB_PAGES=('timing.html','groups.html','settings.html')
+
+def verify_web_pages(archive):
+    for name in WEB_PAGES:
+        entry='assets/'+name
+        if entry not in archive.namelist() or archive.read(entry)!=(ROOT/'airplay-app/android/app/src/main/assets'/name).read_bytes():
+            raise RuntimeError('Missing or outdated packaged web page: '+entry)
 
 def payloads():
     manifest=json.loads(PINNED.read_text())
@@ -19,8 +26,8 @@ def payloads():
     return result
 
 def add_to_apk(archive):
-    archive.write(ROOT/'airplay-app/android/app/src/main/assets/timing.html','assets/timing.html')
-    archive.write(ROOT/'airplay-app/android/app/src/main/assets/groups.html','assets/groups.html')
+    for name in WEB_PAGES:
+        archive.write(ROOT/'airplay-app/android/app/src/main/assets'/name,'assets/'+name)
     archive.write(ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group-bridge.jar','assets/bluetooth-group-bridge.jar')
     for path in (ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group').rglob('*'):
         if path.is_file():archive.write(path,'assets/bluetooth-group/'+path.relative_to(ROOT/'airplay-app/android/app/src/main/assets/bluetooth-group').as_posix())

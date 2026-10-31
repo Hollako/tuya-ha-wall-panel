@@ -1,0 +1,4 @@
+Output thread sanitized
+    Type Id Active Client Session Port Id S Flags Format Chn mask SRate ST
+        108    no    596     137     109 p 0x209 00000005 00000003 44100 3
+  0 Effect Chains
